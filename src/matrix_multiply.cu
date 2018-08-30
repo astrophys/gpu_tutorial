@@ -9,16 +9,32 @@ Notes  :
         module load cuda/8.0 
         nvcc matrix_multiply.cu 
     2. http://developer.download.nvidia.com/compute/cuda/3_1/toolkit/docs/NVIDIA_CUDA_C_ProgrammingGuide_3.1.pdf
+    3. Unified Memory : https://devblogs.nvidia.com/unified-memory-cuda-beginners/
+    4. I think that you can either use 
 
 Future :
 
 
 */
 #include <iostream>
+#include <string.h>
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
 #include <cuda_runtime_api.h>
+
+// This is C++ code - from stackoverflow : https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
+
+
 
 /**********************************
 ARGS:
@@ -26,12 +42,142 @@ RETURN:
 DESCRIPTION:
     Map 2D indices to 1D index
 DEBUG:
+    1. read_numpy_matrix() uses this function extensively.
+       Directly compared output from read_numpy_matrix() with input
+       and was IDENTICAL. This could not work if map_idx() didn't 
+       function correctly.
 FUTURE:
     1. Add error checking if not too expensive
 ***********************************/
 int map_idx(int i, int j, int Ny){
     return (Ny * i + j);
 }
+
+/********************************************************
+    ARGS:
+    DESCRIPTION:
+    RETURN:
+    DEBUG:
+    NOTES: 
+    FUTURE:
+*******************************************************/
+void exit_with_error(char * message){
+    fprintf(stderr, "%s", message);
+    fflush(stderr);
+    exit(1);
+}
+
+
+
+/**********************************
+ARGS:
+    path = path to file to read
+    dim  = dimension of returned matrix, expected to be len = 2
+RETURN:
+DESCRIPTION:
+    Map 2D indices to 1D index
+DEBUG:
+    1. Printed out read in matrix. used 'diff' to compare 
+       with original. Was IDENTICAL
+       --> This function WORKS!
+FUTURE:
+    1. Add error checking if not too expensive
+***********************************/
+float * read_numpy_matrix(char* path, int * dim){
+    char * line= NULL;
+    char * entireFile = NULL;
+    char * pch = NULL;  // Used for parsing strings w strtok
+    char errStr[500];
+    int fileSize = -1;
+    int nline = 0;
+    int maxchar = 0;    // Maximum number of characters in a lines
+    int nchar = 0;      // Number of characters in line
+    int ncols = -1;     // Ncolumns in each row.. should be the same for each row
+    int ncolsThisRow = 0;   
+    int i = 0;
+    int j = 0;
+    int n = 0;          // Index to loop thru _all_ file chars
+    float * matrix = NULL;
+    FILE * f = fopen(path, "r");
+
+    printf("\treading : %s\n", path);
+    fflush(stdout);
+
+    //Error check
+    if(f == NULL){
+        sprintf(errStr, "ERROR!!! %s cannot be opened", path);
+        exit_with_error(errStr);
+    }
+    //Get file size
+    fseek(f, 0, SEEK_END);
+    fileSize = ftell(f);    // Total num chars in file
+    rewind(f);
+
+    //Read entire file
+    entireFile = (char* )malloc(sizeof(char) * fileSize);
+    fread(entireFile, sizeof(char), fileSize, f);
+    rewind(f);
+
+    //Find number of lines and maxchar per line...
+    for(n=0; n<fileSize; n++){
+        if(entireFile[n] == ' '){
+            ncolsThisRow++;
+        }
+        
+        if(entireFile[n] == '\n'){
+            maxchar = nchar > maxchar ? nchar : maxchar;
+
+            //Must set at first
+            if(nline == 0){
+                ncols = ncolsThisRow;
+            //Oops, rows aren't the same size.
+            }else if(ncols != ncolsThisRow){
+                sprintf(errStr, "ERROR!!! nchar %i != ncolsThisRow %i\n", nchar, ncolsThisRow);
+                exit_with_error(errStr);
+            }
+            ncolsThisRow=0;
+            nchar = 0;
+            nline++;
+        }
+        nchar++;
+    }
+    maxchar = maxchar + 1; //+1 for null terminator?
+    printf("dim = [nline, ncols] =  [%i, %i],  maxchar = %i \n", nline, ncols, maxchar);
+    fflush(stdout);
+    
+    // Done with busy work - now allocate memory, read in array
+    cudaMallocManaged(&matrix, nline * maxchar * sizeof(float));
+    line   = (char *)malloc(sizeof(char) * maxchar);
+    i = 0;
+    while(feof(f) == 0){
+        line = fgets(line, maxchar, f);
+        // Parse line in file
+        pch = strtok(line," ");
+        j = 0;
+        while(pch != NULL){
+            matrix[map_idx(i,j,ncols)] = (float)atof(pch);
+            pch = strtok(NULL, " ");
+            j++;
+        }
+        i++;
+    }
+
+    /* Debug 
+    for(i=0; i<nline; i++){
+        for(j=0; j<ncols; j++){
+            printf("%.1f ", matrix[map_idx(i,j,ncols)]);
+        }
+        printf("\n");
+    }*/
+    
+    free(line);
+    free(entireFile);
+    fclose(f);
+    dim[0] = nline;
+    dim[1] = ncols;
+    return matrix;
+}
+ 
  
 
 /**********************************
@@ -53,25 +199,10 @@ void print_1D_array(float * array1D, int Nx, int Ny){
     for(i=0; i<Nx; i++){
         for(j=0; j<Ny; j++){
             idx = map_idx(i,j,Ny);
-            printf("%*.0f ", 3, array1D[idx]);
+            printf("%*.1f ", 5, array1D[idx]);
         }
         printf("\n");
     }
-}
-
-
-/********************************************************
-    ARGS:
-    DESCRIPTION:
-    RETURN:
-    DEBUG:
-    NOTES: 
-    FUTURE:
-*******************************************************/
-void exit_with_error(char * message){
-    fprintf(stderr, "%s", message);
-    fflush(stderr);
-    exit(1);
 }
 
 
@@ -107,6 +238,11 @@ void initialize_matrix(float *A, int * dim, float value){
         for dimA and dimB.
     RETURN:
     DEBUG:
+        1. created code, matrix_generator.py, that multiplies two matrices and
+           saves the input and output to a file. I read in data/A.txt, data/B.txt
+           and used this function to multiply the matrices. Printed the output and 
+           compared to data/AB.txt. It was IDENTICAL. 
+           --> This function works!
     NOTES: 
     FUTURE:
 *******************************************************/
@@ -118,15 +254,6 @@ float * cpu_matrix_multiply(float * A, float * B, int * dimA, int * dimB, int * 
     float sum = 0;
     char errStr[500];
     float * result = (float *)malloc(sizeof(float) * dimA[0] * dimB[1]);
-    //float ** result = (float **)malloc(sizeof(float *) * dimA[0]);
-    // rows
-    //for(i=0; i<dimA[0]; i++){
-    //    // columns
-    //    result[i] = (float *)malloc(sizeof(float) * dimB[1]);
-    //    for(j=0; j<dimB[1]; j++){
-    //        result[i,j] = 0;
-    //    }
-    //}
 
     // Error Check
     if(dimA[1] != dimB[0]){
@@ -138,13 +265,13 @@ float * cpu_matrix_multiply(float * A, float * B, int * dimA, int * dimB, int * 
         for(bj=0; bj<dimB[1]; bj++){
             sum = 0;
             for(j=0; j<dimA[1]; j++){
-                printf("%.0f * %0.f\n", A[map_idx(ai, j, dimA[1])],
-                        B[map_idx(j, bj, dimB[1])]);
+                //printf("%.0f * %0.f\n", A[map_idx(ai, j, dimA[1])],
+                //        B[map_idx(j, bj, dimB[1])]);
 
                 sum += A[map_idx(ai, j, dimA[1])] * B[map_idx(j, bj, dimB[1])];
                 result[map_idx(ai,bj,dimB[1])] = sum;
             }
-            printf("\n");
+            //printf("\n");
         }
     }
     dimAB[0] = dimA[0];
@@ -184,12 +311,15 @@ int main(void)
 {
     // Declare variables
     time_t start = time(NULL);
+    char path[100];
     int dimA[] = {2,3};
     int dimB[] = {3,2};
     int dimAB[] = {0,0};    // Initialize to some value
     float *A = NULL;
     float *B = NULL;
     float *AB = NULL;
+    float *answer = NULL;
+    // This uses CUDA's Unified Memory
     cudaMallocManaged(&A, dimA[0] * dimA[1] * sizeof(float));
     cudaMallocManaged(&B, dimB[0] * dimB[1] * sizeof(float));
 
@@ -211,16 +341,29 @@ int main(void)
     B[map_idx(2,0,dimB[1])] = 9;
     B[map_idx(2,1,dimB[1])] = 12;
     
+    AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
+
+    // Print matrices
     printf("A (%i x %i):\n", dimA[0], dimA[1]);
     print_1D_array(A, dimA[0], dimA[1]);
     printf("B (%i x %i):\n", dimB[0], dimB[1]);
     print_1D_array(B, dimB[0], dimB[1]);
-
-    AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
     printf("AB (%i x %i):\n", dimAB[0], dimAB[1]);
     print_1D_array(AB, dimAB[0], dimAB[1]);
     
 
+    // Read matrix files
+    cudaFree(A);
+    cudaFree(B);
+    cudaFree(AB); 
+    sprintf(path, "data/A.txt");
+    A = read_numpy_matrix(path, dimA);
+    sprintf(path, "data/B.txt");
+    B = read_numpy_matrix(path, dimB);
+    sprintf(path, "data/AB.txt");
+    answer = read_numpy_matrix(path, dimAB);
+    AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
+    //print_1D_array(AB, dimAB[0], dimAB[1]);
 
 
 
