@@ -63,7 +63,8 @@ void print_hello(void)
 {
     int a = 6;
     // Number of threadsin the block
-    printf("blockidx : %i  blockdim : %i  tidx : %i   %p\n", blockIdx.x, blockDim.x, threadIdx.x);
+    printf("blockidx : %i  blockdim : %i  tidx : %i   griddim : %i\n",
+           blockIdx.x, blockDim.x, threadIdx.x, gridDim.x);
 }
 
 
@@ -139,7 +140,7 @@ int main(void)
     // Run
     //add(N, x, y);
     add<<<1,32>>>(N, x, y);      
-    print_hello<<<2,6>>>();     
+    print_hello<<<4,6>>>();     
     // Block CPU until GPU is finished. GPU calls are non-blocking
     cudaDeviceSynchronize();
     

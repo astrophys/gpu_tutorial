@@ -23,8 +23,8 @@ def write_matrix(Matrix = None, FileName = None):
 startTime = time.time()
 
 random.seed(42)
-A=np.zeros([200,10000])
-B=np.zeros([10000,300])
+A=np.zeros([2000,10000])
+B=np.zeros([10000,3000])
 
 for i in range(A.shape[0]):
   for j in range(A.shape[1]):
