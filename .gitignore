@@ -1,6 +1,8 @@
+submit.sh
 AB_result.txt
 a.out
 gpu_specs.txt
 data
 .*swp
 tmp.txt
+output

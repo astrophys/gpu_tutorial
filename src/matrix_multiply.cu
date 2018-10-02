@@ -187,7 +187,7 @@ float * read_numpy_matrix(char* path, int * dim){
     i = 0;
     while(feof(f) == 0){
         if(fgets(line, maxchar, f)){
-            printf("\tEnd of File Reached\n\n");
+            //printf("\tEnd of File Reached\n\n");
             //sprintf(errStr, "ERROR!!! in reading 'line'\n");
             //exit_with_error(errStr);
         }
@@ -405,17 +405,22 @@ __global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
 
 /********************************************************
     ARGS:
+        int argc        : 
+        char *argv[]    : 
     DESCRIPTION:
+        Can run as 
+            ./a.out 
+            ./a.out ouputfile
     RETURN:
     DEBUG:
     NOTES: 
     FUTURE:
 *******************************************************/
-int main(void)
+int main(int argc, char *argv[])
 {
     // Declare variables
-    time_t start = time(NULL);
     char path[100];
+    char errStr[200];
     int nDev = 0;      //Number of devices
     int * dimA = NULL; //{2,3};
     int * dimB = NULL; //{3,2};
@@ -502,16 +507,24 @@ int main(void)
     dimAB[1] = dimB[1];
     gpuErrChk(cudaMallocManaged(&AB, dimAB[0] * dimAB[1] * sizeof(float)));
     //            <<<gridDim.x (# blocks), blockDim.x (# threads per block) >>>
+    time_t start = time(NULL);
     matrix_multiply<<<1024,32>>> (A, B, dimA, dimB, AB, dimAB);  // Fails b/c maxThreadsPerBlock=1024
     //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
     gpuErrChk( cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
-    fout = fopen("AB_result.txt", "w+");
+    printf("Run time : %.3f s\n", difftime(time(NULL), start));
+    if(argc == 1){
+        fout = fopen("output/AB_result.txt", "w+");
+    }else if(argc == 2){
+        fout = fopen(argv[1], "w+");
+    }else{
+        sprintf(errStr, "ERROR!!! Incorrect number of arguments");
+        exit_with_error(errStr);
+    }
     write_1D_array(AB, dimAB[0], dimAB[1], fout);
     fclose(fout);
 
 
-    printf("Run time : %.3f s\n", difftime(time(NULL), start));
     return 0;
 }
 

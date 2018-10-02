@@ -1,7 +1,4 @@
 Did:
-1. Fixed out of bounds running initialize_matrix
-2. Fixed memory bug in read_numpy_matrix()
 
 
 To Do:
-1. Use 

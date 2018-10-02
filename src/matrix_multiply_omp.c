@@ -390,16 +390,16 @@ int main(void)
     
     // Read matrix files
     free(A);
-    //free(B);
-    //free(AB);
-    //sprintf(path, "data/A_small.txt");
-    sprintf(path, "data/A.txt");
+    free(B);
+    free(AB);
+    sprintf(path, "data/A_small.txt");
+    //sprintf(path, "data/A.txt");
     A = read_numpy_matrix(path, dimA);
-    //sprintf(path, "data/B_small.txt");
-    sprintf(path, "data/B.txt");
+    sprintf(path, "data/B_small.txt");
+    //sprintf(path, "data/B.txt");
     B = read_numpy_matrix(path, dimB);
     //sprintf(path, "data/AB_small.txt");
-    sprintf(path, "data/AB.txt");
+    //sprintf(path, "data/AB.txt");
     //answer = read_numpy_matrix(path, dimAB);
     //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
     //print_1D_array(AB, dimAB[0], dimAB[1]);
