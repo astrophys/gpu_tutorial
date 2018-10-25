@@ -1,0 +1,1 @@
+Debug device memory : ((@global float *)d_A)[0]

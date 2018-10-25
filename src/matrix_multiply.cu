@@ -507,11 +507,12 @@ int main(int argc, char *argv[])
     dimAB[1] = dimB[1];
     gpuErrChk(cudaMallocManaged(&AB, dimAB[0] * dimAB[1] * sizeof(float)));
     //            <<<gridDim.x (# blocks), blockDim.x (# threads per block) >>>
+
     time_t start = time(NULL);
     matrix_multiply<<<1024,32>>> (A, B, dimA, dimB, AB, dimAB);  // Fails b/c maxThreadsPerBlock=1024
-    //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
     gpuErrChk( cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
+
     printf("Run time : %.3f s\n", difftime(time(NULL), start));
     if(argc == 1){
         fout = fopen("output/AB_result.txt", "w+");

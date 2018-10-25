@@ -316,7 +316,6 @@ float * omp_matrix_multiply(float * A, float * B, int * dimA, int * dimB, int * 
 int main(void)
 {
     // Declare variables
-    time_t start = time(NULL);
     char path[100];
     int nDev = 0;      //Number of devices
     int * dimA = NULL; //{2,3};
@@ -392,11 +391,11 @@ int main(void)
     free(A);
     free(B);
     free(AB);
-    sprintf(path, "data/A_small.txt");
-    //sprintf(path, "data/A.txt");
+    //sprintf(path, "data/A_small.txt");
+    sprintf(path, "data/A.txt");
     A = read_numpy_matrix(path, dimA);
-    sprintf(path, "data/B_small.txt");
-    //sprintf(path, "data/B.txt");
+    //sprintf(path, "data/B_small.txt");
+    sprintf(path, "data/B.txt");
     B = read_numpy_matrix(path, dimB);
     //sprintf(path, "data/AB_small.txt");
     //sprintf(path, "data/AB.txt");
@@ -409,7 +408,9 @@ int main(void)
     dimAB[1] = dimB[1];
     //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
     fflush(stdout);
+    time_t start = time(NULL);
     AB = omp_matrix_multiply(A, B, dimA, dimB, dimAB);
+    printf("Run time : %.3f s\n", difftime(time(NULL), start));
 
     // Output
     fout = fopen("AB_result.txt", "w+");
@@ -423,7 +424,6 @@ int main(void)
     free(B);
     free(AB);
 
-    printf("Run time : %.3f s\n", difftime(time(NULL), start));
     return 0;
 }
 
