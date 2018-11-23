@@ -366,7 +366,7 @@ float * cpu_matrix_multiply(float * A, float * B, int * dimA, int * dimB, int * 
     FUTURE:
 *******************************************************/
 __global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
-                                  float * AB, int * dimAB)
+                                float * AB, int * dimAB)
 {
     int j = 0;          // Iterate over elements, do dot product
     int startIdx = blockIdx.x * blockDim.x + threadIdx.x; // Index of current thread in block
@@ -491,13 +491,13 @@ int main(int argc, char *argv[])
     gpuErrChk(cudaFree(B));
     free(AB); 
     //sprintf(path, "data/A_small.txt");
-    sprintf(path, "data/A.txt");
+    sprintf(path, "data/large/A.txt");
     A = read_numpy_matrix(path, dimA);
     //sprintf(path, "data/B_small.txt");
-    sprintf(path, "data/B.txt");
+    sprintf(path, "data/large/B.txt");
     B = read_numpy_matrix(path, dimB);
     //sprintf(path, "data/AB_small.txt");
-    sprintf(path, "data/AB.txt");
+    sprintf(path, "data/large/AB.txt");
     answer = read_numpy_matrix(path, dimAB);
     //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
     //print_1D_array(AB, dimAB[0], dimAB[1]);

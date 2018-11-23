@@ -1,4 +1,4 @@
-/*
+/************************************************************
 Author : Ali Snedden
 Date   : 8/21/18
 Purpose:
@@ -14,7 +14,7 @@ Good Weblinks:
 Future :
     1. Try managing memory directly on Host and Device.
 
-*/
+************************************************************/
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -69,7 +69,7 @@ DEBUG:
 FUTURE:
     1. Add error checking if not too expensive
 ***********************************/
-float * read_numpy_matrix(char* path, int * dim){
+float * read_numpy_matrix_row_majored(char* path, int * dim){
     char * line= NULL;
     char * entireFile = NULL;
     char * pch = NULL;  // Used for parsing strings w strtok
@@ -168,6 +168,40 @@ float * read_numpy_matrix(char* path, int * dim){
     return matrix;
 }
  
+
+
+/*************************************************************
+ARGS:
+    float * A   : 2 x 2 matrix, stored as row majored in 1D array
+    int   * dim : len(dim) = 2
+RETURN:
+    -> newM, is a matrix that is column ordered matrix.
+    -> dim is unchanged
+DESCRIPTION:
+DEBUG:
+    1. Spot checked beginning, middle and end of matrix. It appears
+       that I correctly switched from row-majored to column majored
+       matrix
+FUTURE:
+**************************************************************/
+float * reorder_row_major_as_col_major(float * B, int * dim){
+    int i,j;    // Indices
+    float * newM  = (float *)malloc(sizeof(float) * dim[0] * dim[1]); 
+
+    //rows
+    for(i=0; i<dim[0]; i++){
+        for(j=0; j<dim[1]; j++){
+            newM[map_idx(j,i,dim[0])]  = B[map_idx(i,j,dim[1])];    // dim[0] or dim[1] for newM?
+            //newM[map_idx(i,j,dim[0])]  = B[map_idx(j,i,dim[1])];    // dim[0] or dim[1] for newM?
+        }
+    }
+
+    printf("Re-ordering matrix B...\n");
+    free(B);
+    return(newM);
+}
+
+
  
 
 /**********************************
@@ -245,8 +279,8 @@ void initialize_matrix(float *A, int * dim, float value){
 
 /********************************************************
     ARGS:
-        A : 'flattened' 2d matrix
-        B : 'flattened' 2d matrix
+        A : 'flattened' 2d matrix. row majored
+        B : 'flattened' 2d matrix. column majored
         dimA : gives x & y dims
         dimB : gives x & y dims
         dimAB: pointer modified to return size of new matrix
@@ -277,25 +311,30 @@ float * omp_matrix_multiply(float * A, float * B, int * dimA, int * dimB, int * 
 
     // Error Check
     if(dimA[1] != dimB[0]){
-        sprintf(errStr, "ERROR!! dimension mismatch, %i != %i", dimA[1], dimB[0]);
+        sprintf(errStr, "ERROR!! dimension mismatch, %i != %i\n", dimA[1], dimB[0]);
         exit_with_error(errStr);
     }
 
     #pragma omp parallel private(nthreads, tid, sum, bj, ai, j) shared(dimA, dimB, result)
     {
-        tid = omp_get_thread_num();
-        printf("%i / %i reporting for duty\n", tid, omp_get_num_threads());
+        #if defined(_OPENMP)
+            tid = omp_get_thread_num();
+            printf("%i / %i reporting for duty\n", tid, omp_get_num_threads());
+        #endif
         #pragma omp for
         for(ai=0; ai<dimA[0]; ai++){
-            for(bj=0; bj<dimB[1]; bj++){
+            for(j=0; j<dimB[1]; j++){
                 sum = 0;
-                for(j=0; j<dimA[1]; j++){
-                    //printf("%.0f * %0.f\n", A[map_idx(ai, j, dimA[1])],
-                    //        B[map_idx(j, bj, dimB[1])]);
+                for(bj=0; bj<dimB[0]; bj++){
+                    //for(j=0; j<dimA[1]; j++){
+                        //printf("%.0f * %0.f\n", A[map_idx(ai, j, dimA[1])],
+                        //        B[map_idx(j, bj, dimB[1])]);
 
-                    sum += A[map_idx(ai, j, dimA[1])] * B[map_idx(j, bj, dimB[1])];
-                    result[map_idx(ai,bj,dimB[1])] = sum;
+                        //sum += A[map_idx(ai, j, dimA[1])] * B[map_idx(j, bj, dimB[1])];
+                    sum += A[map_idx(ai, bj, dimA[1])] * B[map_idx(j, bj, dimB[0])];
+                    //}
                 }
+                result[map_idx(ai,j,dimB[1])] = sum;
             }
         }
     }
@@ -320,10 +359,10 @@ int main(void)
 {
     // Declare variables
     char path[100];
-    int nDev = 0;      //Number of devices
-    int * dimA = NULL; //{2,3};
-    int * dimB = NULL; //{3,2};
-    int * dimAB = NULL; //{0,0};    // Initialize to some value
+    int nDev = 0;       //Number of devices
+    int * dimA = NULL;  
+    int * dimB = NULL;  
+    int * dimAB = NULL; 
     float *A = NULL;
     float *B = NULL;
     float *AB = NULL;
@@ -333,78 +372,14 @@ int main(void)
     dimA = (int *) malloc(2 * sizeof(int));
     dimB = (int *) malloc(2 * sizeof(int));
     dimAB= (int *) malloc(2 * sizeof(int));
-    // Set dimensions
-    dimA[0] = 2;
-    dimA[1] = 3;
-    dimB[0] = 3;
-    dimB[1] = 2;
-    A = (float* )malloc(dimA[0] * dimA[1] * sizeof(float));
-    B = (float* )malloc(dimB[0] * dimB[1] * sizeof(float));
-    
-    /*
-    int tid;
-    int nthreads;
-    int i = 0;
-    int j = 0;
-    //int longArray
-    #pragma omp parallel private(nthreads, tid) shared(i,j)
-    {
-        tid = omp_get_thread_num();
-        #pragma omp for
-        for(i=0; i<100; i++){
-            j = i*i;
-            printf("[%i, %i]: tid %i / %i\n", i, j, tid, omp_get_num_threads());
-        }
-        #pragma omp flush
 
-    }*/
-
-    // Simple test
-    // initialize_matrix(A,dimA,2);
-    // initialize_matrix(B,dimB,4);
-    // AB = omp_matrix_multiply(A, B, dimA, dimB, dimAB);
-
-    // Set my own values
-    A[map_idx(0,0,dimA[1])] = 1;
-    A[map_idx(0,1,dimA[1])] = 2;
-    A[map_idx(0,2,dimA[1])] = 3;
-    A[map_idx(1,0,dimA[1])] = 4;
-    A[map_idx(1,1,dimA[1])] = 5;
-    A[map_idx(1,2,dimA[1])] = 6;
-
-    B[map_idx(0,0,dimB[1])] = 7;
-    B[map_idx(0,1,dimB[1])] = 10;
-    B[map_idx(1,0,dimB[1])] = 8;
-    B[map_idx(1,1,dimB[1])] = 11;
-    B[map_idx(2,0,dimB[1])] = 9;
-    B[map_idx(2,1,dimB[1])] = 12;
-    
-    AB = omp_matrix_multiply(A, B, dimA, dimB, dimAB);
-
-    // Print matrices
-    printf("Multiplying Trivial Matrices\n");
-    printf("A (%i x %i):\n", dimA[0], dimA[1]);
-    print_1D_array(A, dimA[0], dimA[1]);
-    printf("B (%i x %i):\n", dimB[0], dimB[1]);
-    print_1D_array(B, dimB[0], dimB[1]);
-    printf("AB (%i x %i):\n", dimAB[0], dimAB[1]);
-    print_1D_array(AB, dimAB[0], dimAB[1]);
-    
-    // Read matrix files
-    free(A);
-    free(B);
-    free(AB);
-    //sprintf(path, "data/A_small.txt");
+    //sprintf(path, "data/very_small/A.txt");
     sprintf(path, "data/large/A.txt");
-    A = read_numpy_matrix(path, dimA);
-    //sprintf(path, "data/B_small.txt");
+    A = read_numpy_matrix_row_majored(path, dimA);
+    //sprintf(path, "data/very_small/B.txt");
     sprintf(path, "data/large/B.txt");
-    B = read_numpy_matrix(path, dimB);
-    //sprintf(path, "data/AB_small.txt");
-    //sprintf(path, "data/AB.txt");
-    //answer = read_numpy_matrix(path, dimAB);
-    //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
-    //print_1D_array(AB, dimAB[0], dimAB[1]);
+    B = read_numpy_matrix_row_majored(path, dimB);
+    B = reorder_row_major_as_col_major(B, dimB);
 
     // Try CUDA version of matrix_multiply
     dimAB[0] = dimA[0];
