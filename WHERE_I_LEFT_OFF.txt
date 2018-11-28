@@ -1,7 +1,2 @@
 Did:
-1. changed omp version to use large file
-2. created optimized file (matrix_multiply_omp_cache_optimized.c) where matrix A.txt
-   is read in and stored row majored and B.txt is column majored. This should
-   optimized to minimize cache misses.
-
 To Do:

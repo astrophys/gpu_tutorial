@@ -360,9 +360,10 @@ float * cpu_matrix_multiply(float * A, float * B, int * dimA, int * dimB, int * 
     RETURN:
     DEBUG:
     NOTES: 
-        blockDim.x  : number of threads in each block
-        blockIdx.x  : index of current block
-        threadIdx.x : 
+        1. blockDim.x  : number of threads in each block
+           blockIdx.x  : index of current block
+           threadIdx.x : 
+        2. Error Check - not possible on device code
     FUTURE:
 *******************************************************/
 __global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
@@ -375,8 +376,11 @@ __global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
     int bj = 0;         // Index iterating over columns in B
     float sum = 0;
     //printf("%i %i : [%i %i] %i %i\n", startIdx, stride, threadIdx.x, blockIdx.x, blockDim.x, gridDim.x);
+    if(blockIdx.x == 0 && threadIdx.x ==0){
+        printf("****************************\n\tblockDim.x = %i\n\tgridDim.x = %i\n",
+               blockDim.x, gridDim.x);
+    }
 
-    // Error Check - not possible on device code
     // if(dimA[1] != dimB[0]){
     //     char errStr[] = "ERROR!! dimension mismatch\n";
     //     //sprintf(errStr, "ERROR!! dimension mismatch, %i != %i", dimA[1], dimB[0]);

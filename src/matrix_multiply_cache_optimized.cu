@@ -1,26 +1,69 @@
-/************************************************************
+/*
 Author : Ali Snedden
-Date   : 8/21/18
+Date   : 11/28/18
 Purpose:
-    This is a program that multiplies two matrices.
+    This is a program that multiplies two matrices. This combines features from 
+    matrix_multiply_omp_cache_optimized.c (e.g. taking the transpose of B) and using
+    CUDA.
 Debug  : 
 Notes  : 
-    1. To run : 
-        export OMP_NUM_THREADS=20
-        gcc -O3 -fopenmp src/matrix_multiply_omp.c  ### -O3 is critical
+    1. How to Run:
+        module load cuda/8.0 
+        nvcc matrix_multiply.cu    
+    2. http://developer.download.nvidia.com/compute/cuda/3_1/toolkit/docs/NVIDIA_CUDA_C_ProgrammingGuide_3.1.pdf
+    3. Unified Memory : https://devblogs.nvidia.com/unified-memory-cuda-beginners/
+    4. Cannot kill errant threads and cleanly end computation in CUDA
+       --> See : https://stackoverflow.com/questions/52116815/is-there-a-way-terminate-host-and-device-program-execution-if-a-cuda-thread-enco
+    5. 'Proper' error handling : https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
+    6. Recall that we can't print to stderr from gpu thread
+    7. To debug cuda-gdb ./a.out
+    8. Biggest error is in forgetting to allocate memory between the device and host,
+       e.g. cudaMallocManaged()
+    9. IO is very expensive.  Appears to get flushed on cudaDeviceSynchronize()
+    10. Using matrix_multiply<<<1,1>>> == 431s, while cpu version 14s. Clearly there
+        is substantial overhead when using running single gpu thread.
+    11. If using more than maxThreadsPerBlock, it fails to compute and doesn't emit an 
+        error.
+        --> After each kernel call, do gpuErrchk( cudaPeekAtLastError() );
+
 Good Weblinks:
     1. Unified Memory : https://devblogs.nvidia.com/unified-memory-cuda-beginners/
 
 Future :
     1. Try managing memory directly on Host and Device.
 
-************************************************************/
+*/
+#include <iostream>
 #include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
-#include <omp.h>
+#include <cuda_runtime_api.h>
+
+// This is C++ code - from stackoverflow : https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
+/********************************************************
+    ARGS:
+        cudaError_t code
+        const char* file : 
+        int line :
+    DESCRIPTION:
+        Uses macro and inline function b/c it is important to preserve the
+        file and line number in the error printing.
+    RETURN:
+    DEBUG:
+    NOTES: 
+    FUTURE:
+*******************************************************/
+#define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"GPUassert: %s %s : %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
+
 
 
 /**********************************
@@ -39,6 +82,9 @@ FUTURE:
 int map_idx(int i, int j, int Ny){
     return (Ny * i + j);
 }
+__device__ int d_map_idx(int i, int j, int Ny){
+    return (Ny * i + j);
+}
 
 /********************************************************
     ARGS:
@@ -53,6 +99,12 @@ void exit_with_error(char * message){
     fflush(stderr);
     exit(1);
 }
+//__device__ void d_exit_with_error(char * message){
+//    fprintf(stderr, "%s", message);
+//    fflush(stderr);
+//    exit(1);
+//}
+
 
 
 /**********************************
@@ -69,7 +121,7 @@ DEBUG:
 FUTURE:
     1. Add error checking if not too expensive
 ***********************************/
-float * read_numpy_matrix_row_majored(char* path, int * dim){
+float * read_numpy_matrix(char* path, int * dim){
     char * line= NULL;
     char * entireFile = NULL;
     char * pch = NULL;  // Used for parsing strings w strtok
@@ -128,16 +180,16 @@ float * read_numpy_matrix_row_majored(char* path, int * dim){
         nchar++;
     }
     maxchar = maxchar + 1; //+1 for null terminator?
-    printf("\tdim = [nline, ncols] =  [%i, %i],  maxchar = %i \n", nline, ncols, maxchar);
+    printf("dim = [nline, ncols] =  [%i, %i],  maxchar = %i \n", nline, ncols, maxchar);
     fflush(stdout);
     
     // Done with busy work - now allocate memory, read in array
-    matrix = (float *)malloc(nline * maxchar * sizeof(float));
+    cudaMallocManaged(&matrix, nline * maxchar * sizeof(float));
     line   = (char *)malloc(sizeof(char) * maxchar);
     i = 0;
     while(feof(f) == 0){
-        if(fgets(line, maxchar, f) == NULL){
-            printf("\tEnd of File Reached\n\n");
+        if(fgets(line, maxchar, f)){
+            //printf("\tEnd of File Reached\n\n");
             //sprintf(errStr, "ERROR!!! in reading 'line'\n");
             //exit_with_error(errStr);
         }
@@ -187,7 +239,8 @@ FUTURE:
 **************************************************************/
 float * reorder_row_major_as_col_major(float * B, int * dim){
     int i,j;    // Indices
-    float * newM  = (float *)malloc(sizeof(float) * dim[0] * dim[1]); 
+    float * newM  = NULL;  //(float *)malloc(sizeof(float) * dim[0] * dim[1]); 
+    gpuErrChk(cudaMallocManaged(&newM, sizeof(float) * dim[0] * dim[1]));
 
     //rows
     for(i=0; i<dim[0]; i++){
@@ -196,13 +249,10 @@ float * reorder_row_major_as_col_major(float * B, int * dim){
             //newM[map_idx(i,j,dim[0])]  = B[map_idx(j,i,dim[1])];    // dim[0] or dim[1] for newM?
         }
     }
-
     printf("Re-ordering matrix B...\n");
-    free(B);
+    gpuErrChk(cudaFree(B));
     return(newM);
 }
-
-
  
 
 /**********************************
@@ -266,10 +316,8 @@ void print_1D_array(float * array1D, int Nx, int Ny){
     FUTURE:
 *******************************************************/
 void initialize_matrix(float *A, int * dim, float value){
-    int i;
-    int j; 
-    for(i=0; i<dim[0]; i++){
-        for(j=0; j<dim[1]; j++){
+    for(int i=0; i<dim[0]; i++){
+        for(int j=0; j<dim[1]; j++){
             //A[i*dim[0]+j] = value;
             A[map_idx(i,j,dim[1])] = value;
         }       
@@ -278,10 +326,12 @@ void initialize_matrix(float *A, int * dim, float value){
 }
 
 
+
+
 /********************************************************
     ARGS:
-        A : 'flattened' 2d matrix. row majored
-        B : 'flattened' 2d matrix. column majored
+        A : 'flattened' 2d matrix
+        B : 'flattened' 2d matrix
         dimA : gives x & y dims
         dimB : gives x & y dims
         dimAB: pointer modified to return size of new matrix
@@ -291,57 +341,52 @@ void initialize_matrix(float *A, int * dim, float value){
         for dimA and dimB.
     RETURN:
     DEBUG:
-        1. created code, matrix_generator.py, that multiplies two matrices and
-           saves the input and output to a file. I read in data/A.txt, data/B.txt
-           and used this function to multiply the matrices. Printed the output and 
-           compared to data/AB.txt. It was IDENTICAL. 
-           --> This function works!
     NOTES: 
+        1. blockDim.x  : number of threads in each block
+           blockIdx.x  : index of current block
+           threadIdx.x : 
+        2. Error Check - not possible on device code
     FUTURE:
 *******************************************************/
-float * omp_matrix_multiply(float * A, float * B, int * dimA, int * dimB, int * dimAB)
+__global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
+                                float * AB, int * dimAB)
 {
     int j = 0;          // Iterate over elements, do dot product
+    int startIdx = blockIdx.x * blockDim.x + threadIdx.x; // Index of current thread in block
+    int stride   = blockDim.x * gridDim.x;                // Number of threads in the block
     int ai = 0;         // Index iterating over rows in A
     int bj = 0;         // Index iterating over columns in B
-    int tid;
-    int nthreads;
     float sum = 0;
-    char errStr[500];
-    float * result = (float *)malloc(sizeof(float) * dimA[0] * dimB[1]);
-
-    // Error Check
-    if(dimA[1] != dimB[0]){
-        sprintf(errStr, "ERROR!! dimension mismatch, %i != %i\n", dimA[1], dimB[0]);
-        exit_with_error(errStr);
+    //printf("%i %i : [%i %i] %i %i\n", startIdx, stride, threadIdx.x, blockIdx.x, blockDim.x, gridDim.x);
+    if(blockIdx.x == 0 && threadIdx.x ==0){
+        printf("****************************\n\tblockDim.x = %i\n\tgridDim.x = %i\n",
+               blockDim.x, gridDim.x);
     }
 
-    #pragma omp parallel private(nthreads, tid, sum, bj, ai, j) shared(dimA, dimB, result)
-    {
-        #if defined(_OPENMP)
-            tid = omp_get_thread_num();
-            printf("%i / %i reporting for duty\n", tid, omp_get_num_threads());
-        #endif
-        #pragma omp for
-        for(ai=0; ai<dimA[0]; ai++){
-            for(j=0; j<dimB[1]; j++){
-                sum = 0;
-                for(bj=0; bj<dimB[0]; bj++){
-                    //for(j=0; j<dimA[1]; j++){
-                        //printf("%.0f * %0.f\n", A[map_idx(ai, j, dimA[1])],
-                        //        B[map_idx(j, bj, dimB[1])]);
+    // if(dimA[1] != dimB[0]){
+    //     char errStr[] = "ERROR!! dimension mismatch\n";
+    //     //sprintf(errStr, "ERROR!! dimension mismatch, %i != %i", dimA[1], dimB[0]);
+    //     d_exit_with_error(errStr);
+    // }
+    
+    // Grid-stride loop
+    /**** Row of A to multiply ****/
+    for(ai=startIdx; ai<dimA[0]; ai+=stride){       
+        //printf("[%i %i] : %i : dimA[0] = %i\n", threadIdx.x, blockIdx.x, ai, dimA[0]);
 
-                        //sum += A[map_idx(ai, j, dimA[1])] * B[map_idx(j, bj, dimB[1])];
-                    sum += A[map_idx(ai, bj, dimA[1])] * B[map_idx(j, bj, dimB[0])];
-                    //}
-                }
-                result[map_idx(ai,j,dimB[1])] = sum;
+        /**** Column of AB for output and Columns of B ****/
+        for(j=0; j<dimB[1]; j++){ 
+            sum = 0;
+            for(bj=0; bj<dimB[0]; bj++){
+                // EXPENSIVE!! increases runtime 100x
+                /*printf("\t[%i, %i] x [%i, %i] = %.0f %.0f\n",
+                        ai, bj, j, bj, A[d_map_idx(ai, bj, dimA[1])], B[d_map_idx(j, bj, dimB[0])]); */
+                sum += A[d_map_idx(ai, bj, dimA[1])] * B[d_map_idx(j, bj, dimB[0])];
             }
+            AB[d_map_idx(ai,j,dimB[1])] = sum;
+            //printf("\n");
         }
     }
-    dimAB[0] = dimA[0];
-    dimAB[1] = dimB[1];
-    return result;
 }
 
 
@@ -350,58 +395,85 @@ float * omp_matrix_multiply(float * A, float * B, int * dimA, int * dimB, int * 
 
 /********************************************************
     ARGS:
+        int argc        : 
+        char *argv[]    : 
     DESCRIPTION:
+        Can run as 
+            ./a.out 
+            ./a.out ouputfile
     RETURN:
     DEBUG:
     NOTES: 
     FUTURE:
 *******************************************************/
-int main(void)
+int main(int argc, char *argv[])
 {
     // Declare variables
     char path[100];
-    int nDev = 0;       //Number of devices
-    int * dimA = NULL;  
-    int * dimB = NULL;  
-    int * dimAB = NULL; 
+    char errStr[200];
+    int nDev = 0;      //Number of devices
+    int * dimA = NULL; //{2,3};
+    int * dimB = NULL; //{3,2};
+    int * dimAB = NULL; //{0,0};    // Initialize to some value
     float *A = NULL;
     float *B = NULL;
     float *AB = NULL;
     float *answer = NULL;
     FILE * fout = NULL;
+    // Print device statistics.
+    cudaGetDeviceCount(&nDev);
+    for(int i=0; i<nDev; i++){
+        cudaDeviceProp prop;
+        cudaGetDeviceProperties(&prop, i);
+        printf("Device : %i, Card : %s\n",i,prop.name);
+        printf("warpSize : %d\n", prop.warpSize);
+        printf("multiProcessorCount : %d\n", prop.multiProcessorCount);
+        printf("maxThreadsPerMultiProcessor : %i\n", prop.maxThreadsPerMultiProcessor);
+        printf("maxThreadsPerBlock : %i\n", prop.maxThreadsPerBlock);
+        printf("maxGridSize : %i\n", prop.maxGridSize);
+    }
 
-    dimA = (int *) malloc(2 * sizeof(int));
-    dimB = (int *) malloc(2 * sizeof(int));
-    dimAB= (int *) malloc(2 * sizeof(int));
 
+    // This uses CUDA's Unified Memory
+    gpuErrChk(cudaMallocManaged(&dimA, 2 * sizeof(float)));
+    gpuErrChk(cudaMallocManaged(&dimB, 2 * sizeof(float)));
+    gpuErrChk(cudaMallocManaged(&dimAB, 2 * sizeof(float)));
+    
     //sprintf(path, "data/very_small/A.txt");
     sprintf(path, "data/large/A.txt");
-    A = read_numpy_matrix_row_majored(path, dimA);
+    A = read_numpy_matrix(path, dimA);
     //sprintf(path, "data/very_small/B.txt");
     sprintf(path, "data/large/B.txt");
-    B = read_numpy_matrix_row_majored(path, dimB);
+    B = read_numpy_matrix(path, dimB);
+    time_t start = time(NULL);
     B = reorder_row_major_as_col_major(B, dimB);
+    //sprintf(path, "data/AB_small.txt");
+    //sprintf(path, "data/large/AB.txt");
+    //answer = read_numpy_matrix(path, dimAB);
 
     // Try CUDA version of matrix_multiply
     dimAB[0] = dimA[0];
     dimAB[1] = dimB[1];
-    //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
-    fflush(stdout);
-    time_t start = time(NULL);
-    AB = omp_matrix_multiply(A, B, dimA, dimB, dimAB);
-    printf("Run time : %.3f s\n", difftime(time(NULL), start));
+    gpuErrChk(cudaMallocManaged(&AB, dimAB[0] * dimAB[1] * sizeof(float)));
+    //            <<<gridDim.x (# blocks), blockDim.x (# threads per block) >>>
 
-    // Output
-    fout = fopen("output/AB_result.txt", "w+");
+    matrix_multiply<<<1024,32>>> (A, B, dimA, dimB, AB, dimAB);  // Fails b/c maxThreadsPerBlock=1024
+    //matrix_multiply<<<2,3>>> (A, B, dimA, dimB, AB, dimAB);  // Fails b/c maxThreadsPerBlock=1024
+    gpuErrChk( cudaPeekAtLastError());
+    gpuErrChk(cudaDeviceSynchronize());
+
+    printf("Run time : %.3f s\n", difftime(time(NULL), start));
+    if(argc == 1){
+        fout = fopen("output/AB_result.txt", "w+");
+    }else if(argc == 2){
+        fout = fopen(argv[1], "w+");
+    }else{
+        sprintf(errStr, "ERROR!!! Incorrect number of arguments");
+        exit_with_error(errStr);
+    }
     write_1D_array(AB, dimAB[0], dimAB[1], fout);
     fclose(fout);
 
-    free(dimA);
-    free(dimB);
-    free(dimAB);
-    free(A);
-    free(B);
-    free(AB);
 
     return 0;
 }
