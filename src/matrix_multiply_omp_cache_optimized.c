@@ -373,12 +373,15 @@ int main(void)
     dimA = (int *) malloc(2 * sizeof(int));
     dimB = (int *) malloc(2 * sizeof(int));
     dimAB= (int *) malloc(2 * sizeof(int));
+    printf("Running matrix_multiply_omp_cache_optimized.c ...\n");
 
     //sprintf(path, "data/very_small/A.txt");
-    sprintf(path, "data/large/A.txt");
+    //sprintf(path, "data/large/A.txt");
+    sprintf(path, "data/very_large/A.txt");
     A = read_numpy_matrix_row_majored(path, dimA);
     //sprintf(path, "data/very_small/B.txt");
-    sprintf(path, "data/large/B.txt");
+    //sprintf(path, "data/large/B.txt");
+    sprintf(path, "data/very_large/B.txt");
     B = read_numpy_matrix_row_majored(path, dimB);
     B = reorder_row_major_as_col_major(B, dimB);
 

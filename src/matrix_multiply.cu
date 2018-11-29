@@ -445,6 +445,7 @@ int main(int argc, char *argv[])
         printf("maxThreadsPerMultiProcessor : %i\n", prop.maxThreadsPerMultiProcessor);
         printf("maxThreadsPerBlock : %i\n", prop.maxThreadsPerBlock);
         printf("maxGridSize : %i\n", prop.maxGridSize);
+        printf("Running matrix_multiply.cu...\n");
     }
 
 
@@ -495,13 +496,16 @@ int main(int argc, char *argv[])
     gpuErrChk(cudaFree(B));
     free(AB); 
     //sprintf(path, "data/A_small.txt");
-    sprintf(path, "data/large/A.txt");
+    //sprintf(path, "data/large/A.txt");
+    sprintf(path, "data/very_large/A.txt");
     A = read_numpy_matrix(path, dimA);
     //sprintf(path, "data/B_small.txt");
-    sprintf(path, "data/large/B.txt");
+    //sprintf(path, "data/large/B.txt");
+    sprintf(path, "data/very_large/B.txt");
     B = read_numpy_matrix(path, dimB);
     //sprintf(path, "data/AB_small.txt");
-    sprintf(path, "data/large/AB.txt");
+    //sprintf(path, "data/large/AB.txt");
+    sprintf(path, "data/very_large/AB.txt");
     answer = read_numpy_matrix(path, dimAB);
     //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
     //print_1D_array(AB, dimAB[0], dimAB[1]);

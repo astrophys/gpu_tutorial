@@ -341,6 +341,7 @@ int main(void)
     A = (float* )malloc(dimA[0] * dimA[1] * sizeof(float));
     B = (float* )malloc(dimB[0] * dimB[1] * sizeof(float));
     
+    printf("Running matrix_multiply_omp.c ...\n");
     /*
     int tid;
     int nthreads;
@@ -395,10 +396,12 @@ int main(void)
     free(B);
     free(AB);
     //sprintf(path, "data/A_small.txt");
-    sprintf(path, "data/large/A.txt");
+    //sprintf(path, "data/large/A.txt");
+    sprintf(path, "data/very_large/A.txt");
     A = read_numpy_matrix(path, dimA);
     //sprintf(path, "data/B_small.txt");
-    sprintf(path, "data/large/B.txt");
+    //sprintf(path, "data/large/B.txt");
+    sprintf(path, "data/very_large/B.txt");
     B = read_numpy_matrix(path, dimB);
     //sprintf(path, "data/AB_small.txt");
     //sprintf(path, "data/AB.txt");
@@ -416,7 +419,7 @@ int main(void)
     printf("Run time : %.3f s\n", difftime(time(NULL), start));
 
     // Output
-    fout = fopen("AB_result.txt", "w+");
+    fout = fopen("output/AB_result.txt", "w+");
     write_1D_array(AB, dimAB[0], dimAB[1], fout);
     fclose(fout);
 
