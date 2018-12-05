@@ -1,0 +1,28 @@
+V100 : 80 streaming mutliprocessors (sm)
+     : 64 FP32 per sm OR 32 FP64 per sm
+     :  4 warps per sm, 8 FP64 cores per warps 
+
+
+GPU Architectures (see https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html): 
+
+Architecture feature list:
+=================================================
+compute_30       |  Basic features
+compute_32       |  + Kepler support 
+                 |  + Unified memory programming
+-------------------------------------------------
+compute_35       |  + Dynamic parallelism support
+-------------------------------------------------
+compute_50       |  + Maxwell support
+compute_52       |
+compute_53       |
+-------------------------------------------------
+compute_60       |  + Pascal support
+compute_61       |
+compute_62       |
+-------------------------------------------------
+compute_70       |  + Volta support
+compute_72       |  
+-------------------------------------------------
+compute_75       | + Turing support
+=================================================
