@@ -10,6 +10,8 @@ Notes  :
     1. How to Run:
         module load cuda/9.0 
         nvcc --gpu-architecture=compute_70 matrix_multiply.cu    
+       How to debug:
+        nvcc -g -G --gpu-architecture=compute_70 matrix_multiply.cu  ### -G generate debug infor for device code
     2. Recall that we can't print to stderr from gpu thread
     3. To debug cuda-gdb ./a.out
     4. Biggest error is in forgetting to allocate memory between the device and host,
@@ -29,6 +31,8 @@ Good Weblinks:
     5. Cannot kill errant threads and cleanly end computation in CUDA
        --> See : https://stackoverflow.com/questions/52116815/is-there-a-way-terminate-host-and-device-program-execution-if-a-cuda-thread-enco
     6. Warp Matrix Functions : https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#wmma
+    7. Explaination of grid*, block* : https://stackoverflow.com/a/16619633/4021436
+    8. Grid Stride Loop : https://devblogs.nvidia.com/even-easier-introduction-cuda/
 
 Future :
     1. Try managing memory directly on Host and Device.
@@ -415,6 +419,7 @@ __global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
         2. Error Check - not possible on device code
         3. Taken from : 
             https://devblogs.nvidia.com/programming-tensor-cores-cuda-9/
+        4. https://devblogs.nvidia.com/even-easier-introduction-cuda/
     FUTURE:
 *******************************************************/
 __global__ void wmma_example(half * A, half * B, float * C, int M, int N, int K)
@@ -423,7 +428,7 @@ __global__ void wmma_example(half * A, half * B, float * C, int M, int N, int K)
     //int stride   = blockDim.x * gridDim.x;                // Number of threads in the block
 
     // I DON'T really understand these indices - Figure out later
-    int warpSize = blockIdx.x;
+    int warpSize = 32;      // Don't hard code this idiot
     int warpM = (blockIdx.x * blockDim.x + threadIdx.x) / warpSize;     
     int warpN = (blockIdx.y * blockDim.y + threadIdx.y);
 
@@ -442,9 +447,10 @@ __global__ void wmma_example(half * A, half * B, float * C, int M, int N, int K)
     
 
     //printf("%i %i : [%i %i] %i %i\n", startIdx, stride, threadIdx.x, blockIdx.x, blockDim.x, gridDim.x);
-    if(blockIdx.x == 0 && threadIdx.x ==0){
-        printf("****************************\n\tblockDim.x = %i\n\tgridDim.x = %i\n",
-               blockDim.x, gridDim.x);
+    if(blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x ==1 && threadIdx.y == 1){
+        printf("****************************\n\tblockDim.x = %i\n\tblockDim.y = %i\n\tgridDim.x = %i\n\tgridDim.y = %i\n\tblockIdx.x = %i\n\tblockIdx.y = %i\n\tthreadIdx.x = %i\n\tthreadIdx.y = %i\n",
+               blockDim.x, blockDim.y, gridDim.x, gridDim.y, blockIdx.x, blockIdx.y,
+               threadIdx.x, threadIdx.y);
     }
 
     for(int k=0; k<K; k+=WMMA_K){
@@ -501,6 +507,8 @@ int main(int argc, char *argv[])
     half *B = NULL;
     float *AB = NULL;
     FILE * fout = NULL;
+    dim3 blockD(4,4,1);     // Must be used to have multidimensional grid-stride loops
+    dim3 gridD(2,2,1);        // Must be used to have multidimensional grid-stride loops
     // Print device statistics.
     cudaGetDeviceCount(&nDev);
     for(int i=0; i<nDev; i++){
@@ -539,7 +547,7 @@ int main(int argc, char *argv[])
     gpuErrChk(cudaMallocManaged(&AB, dimAB[0] * dimAB[1] * sizeof(float)));
     //            <<<gridDim.x (# blocks), blockDim.x (# threads per block) >>>
 
-    wmma_example<<<1,32>>> (A, B, AB, dimA[0], dimB[1], dimA[1]);  // Fails b/c maxThreadsPerBlock=1024
+    wmma_example<<<gridD,blockD>>> (A, B, AB, dimA[0], dimB[1], dimA[1]);  // Fails b/c maxThreadsPerBlock=1024
     //matrix_multiply<<<2,3>>> (A, B, dimA, dimB, AB, dimAB);  // Fails b/c maxThreadsPerBlock=1024
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
