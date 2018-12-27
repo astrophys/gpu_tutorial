@@ -1,2 +1,8 @@
 Did:
+1. Need to try to do all the data input and transformation as ints, _then_
+   convert to halfs on device.
+2. Previously thought that convert_int_to_half() was calling the same indices multiple times.
+   Turned out that I was just confused and looking at the output of both A.txt and B.txt
+
 To Do:
+1. fix warp misaligned address
