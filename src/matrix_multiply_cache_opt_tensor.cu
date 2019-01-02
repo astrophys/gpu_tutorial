@@ -388,82 +388,56 @@ void print_1D_array(float * array1D, int Nx, int Ny){
     }
 }
 
-/********************************************************
-    ARGS:
-    DESCRIPTION:
-    RETURN:
-    DEBUG:
-    NOTES: 
-        1. Use 'flattened' 2D array
-    FUTURE:
-*******************************************************/
-void initialize_matrix(float *A, int * dim, float value){
-    for(int i=0; i<dim[0]; i++){
-        for(int j=0; j<dim[1]; j++){
-            //A[i*dim[0]+j] = value;
-            A[map_idx(i,j,dim[1])] = value;
-        }       
-    }
+/* This is NVIDIA's code. See their open source license appropriately */
+// Performs an MxNxK GEMM (C=alpha*A*B + beta*C) assuming:
+//  1) Matrices are packed in memory.
+//  2) M, N and K are multiples of 16. 
+//  3) Neither A nor B are transposed.
+// Note: This is NOT a high performance example but is for demonstration purposes only
+//       For a high performance code please use the GEMM provided in cuBLAS.
+__global__ void wmma_example(half *a, half *b, float *c, int M, int N, int K, float alpha, float beta) {
+   // Leading dimensions. Packed with no transpositions.
+   int lda = M;
+   int ldb = K;
+   int ldc = M;
+   // Tile using a 2D grid
+   int warpM = (blockIdx.x * blockDim.x + threadIdx.x) / warpSize;
+   int warpN = (blockIdx.y * blockDim.y + threadIdx.y);
+   // Declare the fragments
+   wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> a_frag;
+   wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag;
+   wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> acc_frag;
+   wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
+   wmma::fill_fragment(acc_frag, 0.0f);
+   // Loop over k
+   for (int i = 0; i < K; i += WMMA_K) {
+      int aRow = warpM * WMMA_M;
+      int aCol = i;
+      int bRow = i;
+      int bCol = warpN * WMMA_N;
+      // Bounds checking
+      if (aRow < M && aCol < K && bRow < K && bCol < N) {
+         // Load the inputs
+         wmma::load_matrix_sync(a_frag, a + aRow + aCol * lda, lda);
+         wmma::load_matrix_sync(b_frag, b + bRow + bCol * ldb, ldb);
+         // Perform the matrix multiplication
+         wmma::mma_sync(acc_frag, a_frag, b_frag, acc_frag);
+      }
+   }
+   // Load in the current value of c, scale it by beta, and add this our result scaled by alpha
+   int cRow = warpM * WMMA_M;
+   int cCol = warpN * WMMA_N;
+   if (cRow < M && cCol < N) {
+      wmma::load_matrix_sync(c_frag, c + cRow + cCol * ldc, ldc, wmma::mem_col_major);
 
+      for(int i=0; i < c_frag.num_elements; i++) {
+         c_frag.x[i] = alpha * acc_frag.x[i] + beta * c_frag.x[i];
+      }
+      // Store the output
+      wmma::store_matrix_sync(c + cRow + cCol * ldc, c_frag, ldc, wmma::mem_col_major);
+   }
 }
 
-
-
-
-/********************************************************
-    ARGS:
-        A : 'flattened' 2d matrix
-        B : 'flattened' 2d matrix
-        dimA : gives x & y dims
-        dimB : gives x & y dims
-        dimAB: pointer modified to return size of new matrix
-
-    DESCRIPTION:
-        Multiply A*B : Check dims. Expect only 2 dimensions
-        for dimA and dimB.
-    RETURN:
-    DEBUG:
-    NOTES: 
-        1. blockDim.x  : number of threads in each block
-           blockIdx.x  : index of current block
-           threadIdx.x : 
-        2. Error Check - not possible on device code
-    FUTURE:
-*******************************************************/
-__global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
-                                float * AB, int * dimAB)
-{
-    int j = 0;          // Iterate over elements, do dot product
-    int startIdx = blockIdx.x * blockDim.x + threadIdx.x; // Index of current thread in block
-    int stride   = blockDim.x * gridDim.x;                // Number of threads in the block
-    int ai = 0;         // Index iterating over rows in A
-    int bj = 0;         // Index iterating over columns in B
-    float sum = 0;
-    //printf("%i %i : [%i %i] %i %i\n", startIdx, stride, threadIdx.x, blockIdx.x, blockDim.x, gridDim.x);
-    if(blockIdx.x == 0 && threadIdx.x ==0){
-        printf("****************************\n\tblockDim.x = %i\n\tgridDim.x = %i\n",
-               blockDim.x, gridDim.x);
-    }
-
-    // Grid-stride loop
-    /**** Row of A to multiply ****/
-    for(ai=startIdx; ai<dimA[0]; ai+=stride){       
-        //printf("[%i %i] : %i : dimA[0] = %i\n", threadIdx.x, blockIdx.x, ai, dimA[0]);
-
-        /**** Column of AB for output and Columns of B ****/
-        for(j=0; j<dimB[1]; j++){ 
-            sum = 0;
-            for(bj=0; bj<dimB[0]; bj++){
-                // EXPENSIVE!! increases runtime 100x
-                /*printf("\t[%i, %i] x [%i, %i] = %.0f %.0f\n",
-                        ai, bj, j, bj, A[d_map_idx(ai, bj, dimA[1])], B[d_map_idx(j, bj, dimB[0])]); */
-                sum += A[d_map_idx(ai, bj, dimA[1])] * B[d_map_idx(j, bj, dimB[0])];
-            }
-            AB[d_map_idx(ai,j,dimB[1])] = sum;
-            //printf("\n");
-        }
-    }
-}
 
 
 
@@ -488,18 +462,23 @@ __global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
         3. Taken from : 
             https://devblogs.nvidia.com/programming-tensor-cores-cuda-9/
         4. https://devblogs.nvidia.com/even-easier-introduction-cuda/
+        5. If using conditionals in conditions must hold across all threads 
+           in warp, otherwise, operation is likely to hang.
+        6. Inspecting fragments (e.g. a_frag) is treacherous. From the c programming guide 
+           "mapping of matrix elements into fragment internal storage is unspecified and
+            subject to change in future architectures"
     FUTURE:
 *******************************************************/
-__global__ void wmma_example(half * A, half * B, float * C, int M, int N, int K)
+__global__ void wmma_example_ali(half * A, half * B, float * C, int M, int N, int K)
 {
-    //int startIdx = blockIdx.x * blockDim.x + threadIdx.x; // Index of current thread in block
-    //int stride   = blockDim.x * gridDim.x;                // Number of threads in the block
-
     // I DON'T really understand these indices - Figure out later
     int warpSize = 32;      // Don't hard code this idiot
     int warpM = (blockIdx.x * blockDim.x + threadIdx.x) / warpSize;     
     int warpN = (blockIdx.y * blockDim.y + threadIdx.y);
 
+    // Diagnostic
+    printf("[warpM, warpN] = [%i %i]    blockIdx = [%i %i]   threadIdx = [%i %i]\n",
+           warpM, warpN, blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y);
 
     /************
      Fragments for Tensor operations using tensor core.
@@ -507,15 +486,13 @@ __global__ void wmma_example(half * A, half * B, float * C, int M, int N, int K)
             C  =      A  *  B 
        (M x N) = (M x K) * (K x N)
     ************/
-    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
-    //wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag;
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
+    //wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
+    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> a_frag;
+    //wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> b_frag;
+    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag;
     wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> acc_frag;
-    //wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag;
     wmma::fill_fragment(acc_frag, 0.0f);
     
-
-    //printf("%i %i : [%i %i] %i %i\n", startIdx, stride, threadIdx.x, blockIdx.x, blockDim.x, gridDim.x);
     if(blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x ==1 && threadIdx.y == 1){
         printf("****************************\n\tblockDim.x = %i\n\tblockDim.y = %i\n\tgridDim.x = %i\n\tgridDim.y = %i\n\tblockIdx.x = %i\n\tblockIdx.y = %i\n\tthreadIdx.x = %i\n\tthreadIdx.y = %i\n",
                blockDim.x, blockDim.y, gridDim.x, gridDim.y, blockIdx.x, blockIdx.y,
@@ -527,26 +504,48 @@ __global__ void wmma_example(half * A, half * B, float * C, int M, int N, int K)
         int aCol = k;   // Recall aCol is contracted with bRow
         int bRow = k;
         int bCol = warpN * WMMA_N;
-        int cRow = warpM * WMMA_M;
-        int cCol = warpN * WMMA_N;
 
         // Bounds Checking
         if(aRow < M && aCol < K && bRow < K && bCol<N){
-
             // Opportunity for disaster here
             //                    (      , memory address, stride (multiple of 4 or 8))
-            wmma::load_matrix_sync(a_frag, A + aRow * M + aCol, M);
-            //wmma::load_matrix_sync(b_frag, B + bRow     + bCol * K, K);
-            wmma::load_matrix_sync(b_frag, B + bRow * K + bCol, K);
+            //wmma::load_matrix_sync(a_frag, A + aRow * M + aCol, M); // Loading in 16x16 chunk of matrix
+            wmma::load_matrix_sync(a_frag, A + aRow + aCol*M, M); // Loading in 16x16 chunk of matrix
+            //wmma::load_matrix_sync(b_frag, B + bRow * K + bCol, K); // Loading in 16x16 chunk of matrix
+            wmma::load_matrix_sync(b_frag, B + bRow + bCol*K, K); // Loading in 16x16 chunk of matrix
 
+            // Diagnostics
+            /*printf("[warpM, warpN] = [%i %i] bIdx = [%i %i] tIdx = [%i %i] [aRow aCol bRow bCol]=[%i %i %i %i] : [%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i] x [%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i]\n",
+                    warpM, warpN, blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y, aRow, aCol, bRow, bCol,
+                    __half2int_rd(A[aRow * M + aCol + 0]), __half2int_rd(A[aRow * M + aCol + 1]),
+                    __half2int_rd(A[aRow * M + aCol + 2]), __half2int_rd(A[aRow * M + aCol + 3]),
+                    __half2int_rd(A[aRow * M + aCol + 4]), __half2int_rd(A[aRow * M + aCol + 5]),
+                    __half2int_rd(A[aRow * M + aCol + 6]), __half2int_rd(A[aRow * M + aCol + 7]),
+                    __half2int_rd(A[aRow * M + aCol + 8]), __half2int_rd(A[aRow * M + aCol + 9]),
+                    __half2int_rd(A[aRow * M + aCol +10]), __half2int_rd(A[aRow * M + aCol +11]),
+                    __half2int_rd(A[aRow * M + aCol +12]), __half2int_rd(A[aRow * M + aCol +13]),
+                    __half2int_rd(A[aRow * M + aCol +14]), __half2int_rd(A[aRow * M + aCol +15]),
+
+                    __half2int_rd(B[bRow * K + bCol + 0]), __half2int_rd(B[bRow * K + bCol + 1]),
+                    __half2int_rd(B[bRow * K + bCol + 2]), __half2int_rd(B[bRow * K + bCol + 3]),
+                    __half2int_rd(B[bRow * K + bCol + 4]), __half2int_rd(B[bRow * K + bCol + 5]),
+                    __half2int_rd(B[bRow * K + bCol + 6]), __half2int_rd(B[bRow * K + bCol + 7]),
+                    __half2int_rd(B[bRow * K + bCol + 8]), __half2int_rd(B[bRow * K + bCol + 9]),
+                    __half2int_rd(B[bRow * K + bCol +10]), __half2int_rd(B[bRow * K + bCol +11]),
+                    __half2int_rd(B[bRow * K + bCol +12]), __half2int_rd(B[bRow * K + bCol +13]),
+                    __half2int_rd(B[bRow * K + bCol +14]), __half2int_rd(B[bRow * K + bCol +15]));
+            */
             // Perform matrix multiplication
             wmma::mma_sync(acc_frag, a_frag, b_frag, acc_frag);
 
-            // Store the output
-            //wmma::store_matrix_sync(C + cRow * M + cCol, acc_frag, (unsigned)M, wmma::mem_row_major);
-            wmma::store_matrix_sync(C + cRow * N + cCol, acc_frag, (unsigned)M, wmma::mem_row_major);
         }
-
+    }
+    // Store the output for warp
+    int cRow = warpM * WMMA_M;
+    int cCol = warpN * WMMA_N;
+    if(cRow < M && cCol < N){
+        wmma::store_matrix_sync(C + cRow + cCol * M, acc_frag, (unsigned)M, wmma::mem_row_major);
+        //wmma::store_matrix_sync(C + cRow + cCol * M, acc_frag, (unsigned)M, wmma::mem_col_major);
     }
 }
 
@@ -608,13 +607,14 @@ int main(int argc, char *argv[])
     //sprintf(path, "data/very_large/A.txt");
     A = read_numpy_matrix16(path, dimA);
     //sprintf(path, "data/smaller/B.txt");
+    A = reorder_row_major_as_col_major(A, dimA);
     sprintf(path, "data/very_small/B.txt");
     //sprintf(path, "data/very_large/B.txt");
     B = read_numpy_matrix16(path, dimB);
     time_t start = time(NULL);
     //sprintf(path, "data/AB_small.txt");
     //sprintf(path, "data/large/AB.txt");
-    //B = reorder_row_major_as_col_major(B, dimB);
+    B = reorder_row_major_as_col_major(B, dimB);
 
     // Convert from int to half
     printf("Converting array A to half precision...\n"); fflush(stdout);
@@ -633,11 +633,14 @@ int main(int argc, char *argv[])
     dimAB[0] = dimA[0];
     dimAB[1] = dimB[1];
     gpuErrChk(cudaMallocManaged(&AB, dimAB[0] * dimAB[1] * sizeof(float)));
+    // Initialize to zero
+    for(int i=0; i<dimAB[0] * dimAB[1]; i++)    AB[i] = 0;
     //            <<<gridDim.x (# blocks), blockDim.x (# threads per block) >>>
     printf("Multiply [%i x %i] * [%i x %i] = [%i x %i]\n", dimA[0], dimA[1], dimB[0],
-           dimB[1], dimA[0], dimB[1]); fflush(stdout);
-    wmma_example<<<gridD,blockD>>> (hA, hB, AB, dimA[0], dimB[0], dimA[1]);  
-    //matrix_multiply<<<2,3>>> (A, B, dimA, dimB, AB, dimAB);  // Fails b/c maxThreadsPerBlock=1024
+           dimB[1], dimAB[0], dimAB[1]); fflush(stdout);
+    // Multiply Matrix 
+    //          <<<gridD(2,2), blockD(4,4)>>>
+    wmma_example<<<gridD,blockD>>> (hA, hB, AB, dimA[0], dimB[0], dimA[1], 1.0, 1.0);  
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
 
