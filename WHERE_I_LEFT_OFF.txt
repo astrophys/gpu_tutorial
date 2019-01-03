@@ -1,16 +1,5 @@
 Did:
-1. Added : understanding_cuda_gdb.cu. Used to determine how warps are enumerated in
-   cuda-gdb. Seems like they are enumerated across multiple device calls.
-   Used in StackOverflow question : 
-   https://stackoverflow.com/questions/53949321/how-does-cuda-determine-enumeration-of-warps-in-cuda
-   According to talonomies, I'm confused and wrong.
-2. I was having difficulty getting the correct zero padded answer with
-   matrix_multiply_cache_opt_tensor.cu. So I created zero_padded_matrix_multiply.py to
-   check what values the zero padded arrays should be.
-3. Copied over nvidia's code verbatum to matrix_multiply_cache_opt_tensor.cu as 
-   wmma_example() to see if it would work (maybe I made a mistake translating/copying.
-   It still FAILS to correctly get the right values as my code.  What is going on?
-
+   
 
 To Do:
 1. Fix bug where not all the output is saved from wmma

@@ -19,7 +19,7 @@ def exit_with_error(arg):
 
 def main():
     if(len(sys.argv) != 3):
-        exit_with_error("ERROR!! Wrong number of args. 2 paths expected to matrix files")
+        exit_with_error("ERROR!! Wrong number of args. 2 paths expected to matrix files\n")
     aL = []
     bL = []
 
