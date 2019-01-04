@@ -1,5 +1,4 @@
 Did:
-   
 
 To Do:
 1. Fix bug where not all the output is saved from wmma
