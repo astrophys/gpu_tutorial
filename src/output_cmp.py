@@ -137,11 +137,11 @@ def main():
         print("IDENTICAL :: {} and {} are within {} fractional tolerance\n".format(
               sys.argv[1], sys.argv[2], tol))
     else:
-        import pdb
-        import traceback
-        extype, value, tb = sys.exc_info()
-        traceback.print_exc()
-        pdb.post_mortem(tb)
+        #import pdb
+        #import traceback
+        #extype, value, tb = sys.exc_info()
+        #traceback.print_exc()
+        #pdb.post_mortem(tb)
         nDiff = m1.shape[0] * m1.shape[1] - np.count_nonzero(np.isclose(a=m1,b=m2,rtol=tol))
         print("DIFFERENT :: {} and {} not within {} tol. {}/{} = {:<.2f} %  "
               "different \n".format(sys.argv[1], sys.argv[2], tol, nDiff,

@@ -604,13 +604,15 @@ int main(int argc, char *argv[])
     gpuErrChk(cudaMallocManaged(&dimAB, 2 * sizeof(int)));
     
     
-    //sprintf(path, "data/smaller/A.txt");
     //sprintf(path, "data/very_small/A.txt");
+    //sprintf(path, "data/smaller/A.txt");
+    //sprintf(path, "data/large/A.txt");
     sprintf(path, "data/very_large/A.txt");
     A = read_numpy_matrix16(path, dimA);
-    //sprintf(path, "data/smaller/B.txt");
     //A = reorder_row_major_as_col_major(A, dimA);
+    //sprintf(path, "data/smaller/B.txt");
     //sprintf(path, "data/very_small/B.txt");
+    //sprintf(path, "data/large/B.txt");
     sprintf(path, "data/very_large/B.txt");
     B = read_numpy_matrix16(path, dimB);
     time_t start = time(NULL);
