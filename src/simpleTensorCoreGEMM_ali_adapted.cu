@@ -26,7 +26,7 @@
  */
 
 
-/// To Compile : nvcc -g -arch=sm_70 src/simpleTensorCoreGEMM.cu -lcurand -lcublas
+// To Compile : nvcc -g -G -arch=sm_70 src/simpleTensorCoreGEMM_ali_adapted.cu -lcurand -lcublas -o simpleTensorCoreGEMM_ali_adapted
 
 #include <stdio.h>
 #include <curand.h>
@@ -213,7 +213,7 @@ float * read_numpy_matrix16(char* path, int * dim){
                 ncols = ncolsThisRow;
             //Oops, rows aren't the same size.
             }else if(ncols != ncolsThisRow){
-                sprintf(errStr, "ERROR!!! nchar %i != ncolsThisRow %i\n", nchar, ncolsThisRow);
+                sprintf(errStr, "ERROR!!! nchar %i != ncolsThisRow %i\n", ncols, ncolsThisRow);
                 exit_with_error(errStr);
             }
             ncolsThisRow=0;
@@ -228,7 +228,7 @@ float * read_numpy_matrix16(char* path, int * dim){
     
     // Done with busy work - now allocate memory, read in array
     // cudaMallocManaged(&matrix, nline * maxchar * sizeof(int));
-    matrix = (float*) malloc(nline * maxchar * sizeof(float));
+    matrix = (float*) malloc(nline * ncols * sizeof(float));
     line   = (char *)malloc(sizeof(char) * maxchar);
     i = 0;
     while(feof(f) == 0){
@@ -579,7 +579,8 @@ int main(int argc, char* argv[]) {
       printf("\nFor a faster code using wmma you should check out the cudaTensorCoreGemm sample in the CUDA Toolkit.\nThis code was written as a demo only!\n\n");
    }
 
-   FILE * fout = fopen("output/AB_result.txt", "w+");
+   // Output Results from wmma_example<<< >>>
+   FILE * fout = fopen("output/AB_result_simpleTensorCoreGEMM.txt", "w+");
    write_1D_array(c_host_wmma, MATRIX_M, MATRIX_N, fout);
    
    

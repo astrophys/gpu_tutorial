@@ -8,3 +8,4 @@ tmp*.txt
 output
 nvidia_code
 core.*
+simpleTensorCoreGEMM_ali_adapted

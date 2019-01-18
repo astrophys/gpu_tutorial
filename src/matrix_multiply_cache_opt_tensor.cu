@@ -11,7 +11,7 @@ Notes  :
         module load cuda/9.0 
         nvcc --gpu-architecture=compute_70 matrix_multiply.cu    
        How to debug:
-        nvcc -g -G --gpu-architecture=compute_70 matrix_multiply.cu  ### -G generate debug infor for device code
+        nvcc -g -G --gpu-architecture=compute_70 matrix_multiply_cache_opt_tensor.cu  ### -G generate debug infor for device code
     2. Recall that we can't print to stderr from gpu thread
     3. To debug cuda-gdb ./a.out
     4. Biggest error is in forgetting to allocate memory between the device and host,
@@ -140,7 +140,7 @@ FUTURE:
     1. Add error checking if not too expensive
     2. Make independant of white space.
 ***********************************/
-int * read_numpy_matrix16(char* path, int * dim){
+float * read_numpy_matrix16(char* path, int * dim){
     char * line= NULL;
     char * entireFile = NULL;
     char * pch = NULL;  // Used for parsing strings w strtok
@@ -156,9 +156,9 @@ int * read_numpy_matrix16(char* path, int * dim){
     int n = 0;          // Index to loop thru _all_ file chars
     int nRows16 = 0;    // Number of rows in matrix16 
     int nCols16 = 0;    // Number of rows in matrix16 
-    int * matrix16 = NULL;
+    float * matrix16 = NULL;
     //float * matrix = NULL;
-    int * matrix = NULL;
+    float * matrix = NULL;
     FILE * f = fopen(path, "r");
 
     printf("reading : %s\n", path);
@@ -193,7 +193,7 @@ int * read_numpy_matrix16(char* path, int * dim){
                 ncols = ncolsThisRow;
             //Oops, rows aren't the same size.
             }else if(ncols != ncolsThisRow){
-                sprintf(errStr, "ERROR!!! nchar %i != ncolsThisRow %i\n", nchar, ncolsThisRow);
+                sprintf(errStr, "ERROR!!! nchar %i != ncolsThisRow %i\n", ncols, ncolsThisRow);
                 exit_with_error(errStr);
             }
             ncolsThisRow=0;
@@ -208,7 +208,7 @@ int * read_numpy_matrix16(char* path, int * dim){
     
     // Done with busy work - now allocate memory, read in array
     // cudaMallocManaged(&matrix, nline * maxchar * sizeof(int));
-    matrix = (int*) malloc(nline * maxchar * sizeof(int));
+    matrix = (float*) malloc(nline * ncols * sizeof(int));
     line   = (char *)malloc(sizeof(char) * maxchar);
     i = 0;
     while(feof(f) == 0){
@@ -222,7 +222,7 @@ int * read_numpy_matrix16(char* path, int * dim){
         j = 0;
         while(pch != NULL){
             //matrix[map_idx(i,j,ncols)] = (float)atof(pch);
-            matrix[map_idx(i,j,ncols)] = (int)atof(pch);
+            matrix[map_idx(i,j,ncols)] = (float)atof(pch);
             pch = strtok(NULL, " ");
             j++;
         }
@@ -242,7 +242,7 @@ int * read_numpy_matrix16(char* path, int * dim){
     }else{
         nCols16 = (ncols / 16 + 1) * 16;
     }
-    cudaMallocManaged(&matrix16, nRows16 * nCols16 * sizeof(int));
+    cudaMallocManaged(&matrix16, nRows16 * nCols16 * sizeof(float));
     // set matrix16[] = 0
     for(i=0; i<nRows16; i++){
         for(j=0; j<nCols16; j++){
@@ -322,20 +322,30 @@ DEBUG:
     1. Spot checked B (half * array), is correct.
 FUTURE:
 ***********************************/
-__global__ void convert_int_to_half(int * A, half * B, int M, int N){
-    int rIdx = blockIdx.x * blockDim.x + threadIdx.x;     //Row    index
+__global__ void convert_float_to_half(float * A, half * B, int M, int N){
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx < M*N) {
+       B[idx] = A[idx];
+    }
+   /* int rIdx = blockIdx.x * blockDim.x + threadIdx.x;     //Row    index
     int cIdx = blockIdx.y * blockDim.y + threadIdx.y;     //Column index
     int rStride = blockDim.x * gridDim.x;  //
     int cStride = blockDim.y * gridDim.y;  //
+    int i;
+    int j;
+    int idx;
 
-    for(int i=rIdx; i<M; i+=rStride){
-        for(int j=cIdx; j<N; j+=cStride){
-            B[d_map_idx(i,j,N)] = __int2half_rd(A[d_map_idx(i,j,N)]);
-            /*printf("[%i %i %i %i] ::: A[%*i] = A[%*i,%*i] = %i\n", threadIdx.x,
+    for(i=rIdx; i<M; i+=rStride){
+        for(j=cIdx; j<N; j+=cStride){
+            idx = d_map_idx(i,j,N);
+            B[idx] = __float2half_rd(A[idx]);
+            //B[d_map_idx(i,j,N)] = __float2half_rd(A[d_map_idx(i,j,N)]);
+            / *printf("[%i %i %i %i] ::: A[%*i] = A[%*i,%*i] = %i\n", threadIdx.x,
                    threadIdx.y, blockIdx.x, blockIdx.y, 2,d_map_idx(i,j,N), 2, i, 2, j,
-                   A[d_map_idx(i,j,N)]);*/
+                   A[d_map_idx(i,j,N)]);* /
         }
     }
+    */
 }
 
 
@@ -575,8 +585,8 @@ int main(int argc, char *argv[])
     int * dimA = NULL;  //{2,3};
     int * dimB = NULL;  //{3,2};
     int * dimAB = NULL; //{0,0};    // Initialize to some value
-    int *A = NULL;
-    int *B = NULL;
+    float *A = NULL;
+    float *B = NULL;
     half *hA = NULL;        // Converted array A to half
     half *hB = NULL;        // Converted array B to half
     float *AB = NULL;
@@ -619,20 +629,16 @@ int main(int argc, char *argv[])
     //sprintf(path, "data/AB_small.txt");
     //sprintf(path, "data/large/AB.txt");
     //B = reorder_row_major_as_col_major(B, dimB);
-    blockDim.x = 128;
-    blockDim.y = 4;
-    gridDim.x = (dimA[0] + (WMMA_M * blockDim.x / 32 - 1)) / (WMMA_M * blockDim.x / 32);
-    gridDim.y = (dimB[1] + WMMA_N * blockDim.y - 1) / (WMMA_N * blockDim.y);
 
     // Convert from int to half
     printf("Converting array A to half precision...\n"); fflush(stdout);
     gpuErrChk(cudaMallocManaged(&hA, dimA[0] * dimA[1] * sizeof(half)));
     gpuErrChk(cudaMallocManaged(&hB, dimB[0] * dimB[1] * sizeof(half)));
-    convert_int_to_half <<<gridDim,blockDim>>> (A, hA, dimA[0], dimA[1]);
+    convert_float_to_half <<<(dimA[0] * dimA[1] + 255) / 256, 256>>> (A, hA, dimA[0], dimA[1]);
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
     printf("Converting array B to half precision...\n"); fflush(stdout);
-    convert_int_to_half <<<gridDim,blockDim>>> (B, hB, dimB[0], dimB[1]);
+    convert_float_to_half <<<(dimB[0] * dimB[1] + 255) / 256, 256>>> (B, hB, dimB[0], dimB[1]);
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
 
@@ -651,7 +657,11 @@ int main(int argc, char *argv[])
     //printf("\tgridDim = \n\tblockDim = \n");
     // Multiply Matrix 
     //          <<<gridD(2,2), blockD(4,4)>>>
-    wmma_example<<<gridDim,blockDim>>> (hA, hB, AB, dimA[0], dimB[0], dimA[1], 1.0, 1.0);  
+    blockDim.x = 128;
+    blockDim.y = 4;
+    gridDim.x = (dimA[0] + (WMMA_M * blockDim.x / 32 - 1)) / (WMMA_M * blockDim.x / 32);
+    gridDim.y = (dimB[1] + WMMA_N * blockDim.y - 1) / (WMMA_N * blockDim.y);
+    wmma_example<<<gridDim,blockDim>>> (hA, hB, AB, dimA[0], dimB[1], dimA[1], 1.0, 1.0);  
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
 
