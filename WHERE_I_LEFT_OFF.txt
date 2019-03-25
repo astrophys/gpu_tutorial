@@ -1,3 +1,17 @@
 Did:
+1. Previously, in matrix_multiply_cache_opt_tensor.cu, I did : 
+    .
+    .
+    .
+    blockDim.x = 128;
+    blockDim.y = 4;
+    gridDim.x = (dimA[0] + (WMMA_M * blockDim.x / 32 - 1)) / (WMMA_M * blockDim.x / 32);
+    gridDim.y = (dimB[1] + WMMA_N * blockDim.y - 1) / (WMMA_N * blockDim.y);
+    printf("Converting array A to half precision...\n"); fflush(stdout);
+    convert_float_to_half <<<gridDim,blockDim>>> (A, hA, dimA[0], dimA[1]);
+    .
+    .
+    .
+    before calling 
 
 To Do:

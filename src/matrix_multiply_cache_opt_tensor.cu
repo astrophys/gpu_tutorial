@@ -317,17 +317,18 @@ ARGS:
     int N   : number of Cols
 RETURN:
 DESCRIPTION:
-    Print 2D matrix
+    Convert floating point array to half precision array
 DEBUG:
     1. Spot checked B (half * array), is correct.
 FUTURE:
 ***********************************/
 __global__ void convert_float_to_half(float * A, half * B, int M, int N){
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    // This is much simpler than my version //
+    /*int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx < M*N) {
        B[idx] = A[idx];
-    }
-   /* int rIdx = blockIdx.x * blockDim.x + threadIdx.x;     //Row    index
+    }*/
+    int rIdx = blockIdx.x * blockDim.x + threadIdx.x;     //Row    index
     int cIdx = blockIdx.y * blockDim.y + threadIdx.y;     //Column index
     int rStride = blockDim.x * gridDim.x;  //
     int cStride = blockDim.y * gridDim.y;  //
@@ -340,12 +341,11 @@ __global__ void convert_float_to_half(float * A, half * B, int M, int N){
             idx = d_map_idx(i,j,N);
             B[idx] = __float2half_rd(A[idx]);
             //B[d_map_idx(i,j,N)] = __float2half_rd(A[d_map_idx(i,j,N)]);
-            / *printf("[%i %i %i %i] ::: A[%*i] = A[%*i,%*i] = %i\n", threadIdx.x,
-                   threadIdx.y, blockIdx.x, blockIdx.y, 2,d_map_idx(i,j,N), 2, i, 2, j,
-                   A[d_map_idx(i,j,N)]);* /
+            //printf("[%i %i %i %i] ::: A[%*i] = A[%*i,%*i] = %i\n", threadIdx.x,
+            //       threadIdx.y, blockIdx.x, blockIdx.y, 2,d_map_idx(i,j,N), 2, i, 2, j,
+            //       A[d_map_idx(i,j,N)]);
         }
     }
-    */
 }
 
 
@@ -631,14 +631,20 @@ int main(int argc, char *argv[])
     //B = reorder_row_major_as_col_major(B, dimB);
 
     // Convert from int to half
+    blockDim.x = 128;
+    blockDim.y = 4;
+    gridDim.x = (dimA[0] + (WMMA_M * blockDim.x / 32 - 1)) / (WMMA_M * blockDim.x / 32);
+    gridDim.y = (dimB[1] + WMMA_N * blockDim.y - 1) / (WMMA_N * blockDim.y);
     printf("Converting array A to half precision...\n"); fflush(stdout);
     gpuErrChk(cudaMallocManaged(&hA, dimA[0] * dimA[1] * sizeof(half)));
     gpuErrChk(cudaMallocManaged(&hB, dimB[0] * dimB[1] * sizeof(half)));
-    convert_float_to_half <<<(dimA[0] * dimA[1] + 255) / 256, 256>>> (A, hA, dimA[0], dimA[1]);
+    //convert_float_to_half <<<(dimA[0] * dimA[1] + 255) / 256, 256>>> (A, hA, dimA[0], dimA[1]);
+    convert_float_to_half <<<gridDim,blockDim>>> (A, hA, dimA[0], dimA[1]);
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
     printf("Converting array B to half precision...\n"); fflush(stdout);
-    convert_float_to_half <<<(dimB[0] * dimB[1] + 255) / 256, 256>>> (B, hB, dimB[0], dimB[1]);
+    //convert_float_to_half <<<(dimB[0] * dimB[1] + 255) / 256, 256>>> (B, hB, dimB[0], dimB[1]);
+    convert_float_to_half <<<gridDim,blockDim>>> (B, hB, dimB[0], dimB[1]);
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
 
@@ -657,10 +663,10 @@ int main(int argc, char *argv[])
     //printf("\tgridDim = \n\tblockDim = \n");
     // Multiply Matrix 
     //          <<<gridD(2,2), blockD(4,4)>>>
-    blockDim.x = 128;
-    blockDim.y = 4;
-    gridDim.x = (dimA[0] + (WMMA_M * blockDim.x / 32 - 1)) / (WMMA_M * blockDim.x / 32);
-    gridDim.y = (dimB[1] + WMMA_N * blockDim.y - 1) / (WMMA_N * blockDim.y);
+    //blockDim.x = 128;
+    //blockDim.y = 4;
+    //gridDim.x = (dimA[0] + (WMMA_M * blockDim.x / 32 - 1)) / (WMMA_M * blockDim.x / 32);
+    //gridDim.y = (dimB[1] + WMMA_N * blockDim.y - 1) / (WMMA_N * blockDim.y);
     wmma_example<<<gridDim,blockDim>>> (hA, hB, AB, dimA[0], dimB[1], dimA[1], 1.0, 1.0);  
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
