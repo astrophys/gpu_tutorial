@@ -1,0 +1,1 @@
+rsync -av -e ssh --exclude very_large --exclude large --exclude small aps003@10.70.250.101:/gpfs0/home/gdhpcgroup/aps003/Code/CUDA/gpu_tutorial .
