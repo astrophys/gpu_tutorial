@@ -4,7 +4,14 @@ Date   : 3/25/19
 Purpose:
     I recently profiled Gadgetron. It is spending 172s in cudaGetDeviceProperties(!) by 
     calling it 357055 times.  Let's see if I can replicate that.
-Debug  : 
+Usage : 
+        $ module load cuda/9.2
+        $ rm output/AB_result.txt                             ## remove old result
+        $ nvcc -g -G -Wall --gpu-architecture=compute_35 src/k40_test.cu
+        $ ./a.out                                             ## Execute code
+        $ diff -w output/AB_result.txt data/small/AB.txt      ## Check output
+    Tested this on k40 and v100, both worked fine.
+
 Notes  : 
     1. How to Run:
             module load cuda/9.0 
@@ -14,12 +21,7 @@ Notes  :
             cuda-gdb ./a.out
     2. Recall that we can't print to stderr from gpu thread
     3. IO is very expensive.  Appears to get flushed on cudaDeviceSynchronize()
-    4. Using matrix_multiply<<<1,1>>> == 431s, while cpu version 14s. Clearly there
-        is substantial overhead when using running single gpu thread.
-    5. If using more than maxThreadsPerBlock, it fails to compute and doesn't emit an 
-        error.
-        --> After each kernel call, do gpuErrchk( cudaPeekAtLastError() );
-
+    
 
 Resources :
     1. http://developer.download.nvidia.com/compute/cuda/3_1/toolkit/docs/NVIDIA_CUDA_C_ProgrammingGuide_3.1.pdf
