@@ -25,16 +25,18 @@ Resources :
     1. http://developer.download.nvidia.com/compute/cuda/3_1/toolkit/docs/NVIDIA_CUDA_C_ProgrammingGuide_3.1.pdf
     2. 'Proper' error handling 
        --> See https://stackoverflow.com/q/14038589/4021436
-    5. Cannot kill errant threads and cleanly end computation in CUDA
+    3. Cannot kill errant threads and cleanly end computation in CUDA
        --> See : https://stackoverflow.com/q/52116815/4021436
-    6. Warp Matrix Functions : 
+    4. Warp Matrix Functions : 
        --> See : https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#wmma
-    7. Explaination of grid*, block* :
+    5. Explaination of grid*, block* :
        --> See : https://stackoverflow.com/a/16619633/4021436
-    8. Grid Stride Loop :
-       --> See : ttps://devblogs.nvidia.com/even-easier-introduction-cuda/
-    9. Query GPU device : 
+    6. Grid Stride Loop :
+       --> See : https://devblogs.nvidia.com/even-easier-introduction-cuda/
+    7. Query GPU device : 
        --> See : https://devblogs.nvidia.com/how-query-device-properties-and-handle-errors-cuda-cc/
+    8. How to inspect device memory : 
+       --> https://stackoverflow.com/a/37888060/4021436
 
 Future :
     
@@ -236,7 +238,7 @@ float * read_numpy_matrix(char* path, int * dim){
     fflush(stdout);
     
     // Done with busy work - now allocate memory, read in array
-    cudaMallocManaged(&matrix, nline * maxchar * sizeof(float));
+    matrix = (float *)malloc(nline * maxchar * sizeof(float));
     line   = (char *)malloc(sizeof(char) * maxchar);
     i = 0;
     while(feof(f) == 0){
@@ -422,33 +424,28 @@ int main(int argc, char *argv[])
 
     // Allocate device objects
     // Transfer data from host to device
-    //for(i=0; i<2; i++){
     gpuErrChk(cudaMemcpy(d_dimA, h_dimA, nDim * sizeof(int), cudaMemcpyHostToDevice));
     gpuErrChk(cudaMemcpy(d_dimB, h_dimB, nDim * sizeof(int), cudaMemcpyHostToDevice));
-    //}
-    gpuErrChk(cudaMalloc(&d_A,  d_dimA[0] * d_dimA[1] * sizeof(float)));
-    gpuErrChk(cudaMalloc(&d_B,  d_dimB[0] * d_dimB[1] * sizeof(float)));
-    gpuErrChk(cudaMalloc(&d_AB, d_dimA[0] * d_dimB[1] * sizeof(float)));
-    d_dimAB[0] = d_dimA[0];     // Do I need a cudaMemcpy here?
-    d_dimAB[1] = d_dimB[1];     // Do I need a cudaMemcpy here?
-    gpuErrChk(cudaMemcpy(d_A, h_A, h_dimA[0] * h_dimA[1] * sizeof(int),
-                         cudaMemcpyHostToDevice));
-    gpuErrChk(cudaMemcpy(d_B, h_B, h_dimB[0] * h_dimB[1] * sizeof(int),
-                         cudaMemcpyHostToDevice));
-    //for(i=0; i < d_dimA[0] * d_dimA[1]; i++){
-    //    
-    //}
-    
+    gpuErrChk(cudaMalloc(&d_A,  h_dimA[0] * h_dimA[1] * sizeof(float)));
+    gpuErrChk(cudaMalloc(&d_B,  h_dimB[0] * h_dimB[1] * sizeof(float)));
+    gpuErrChk(cudaMalloc(&d_AB, h_dimAB[0] * h_dimAB[1] * sizeof(float)));
 
-    //gpuErrChk(cudaMalloc(&AB, dimAB[0] * dimAB[1] * sizeof(float)));
-    //            <<<gridDim.x (# blocks), blockDim.x (# threads per block) >>>
+    gpuErrChk(cudaMemcpy(&d_dimAB[0], &h_dimAB[0], sizeof(int),cudaMemcpyHostToDevice));
+    gpuErrChk(cudaMemcpy(&d_dimAB[1], &h_dimAB[1], sizeof(int),cudaMemcpyHostToDevice));
+    
+    gpuErrChk(cudaMemcpy(d_A, h_A, h_dimA[0] * h_dimA[1] * sizeof(float),
+                         cudaMemcpyHostToDevice));
+    gpuErrChk(cudaMemcpy(d_B, h_B, h_dimB[0] * h_dimB[1] * sizeof(float),
+                         cudaMemcpyHostToDevice));
 
     time_t start = time(NULL);
-    matrix_multiply<<<1024,32>>> (d_A, d_B, d_dimA, d_dimB, d_AB, d_dimAB);  
+    //matrix_multiply<<<1024,32>>> (d_A, d_B, d_dimA, d_dimB, d_AB, d_dimAB);  
+    matrix_multiply<<<1,1>>> (d_A, d_B, d_dimA, d_dimB, d_AB, d_dimAB);  
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
+    cudaDeviceSynchronize();     // Need to block here to prevent further CPU execution
     // Copy back to Host
-    gpuErrChk(cudaMemcpy(h_AB, d_AB, d_dimAB[0] * d_dimAB[1] * sizeof(float),
+    gpuErrChk(cudaMemcpy(h_AB, d_AB, h_dimAB[0] * h_dimAB[1] * sizeof(float),
                          cudaMemcpyDeviceToHost))
 
     printf("Run time : %.3f s\n", difftime(time(NULL), start));
