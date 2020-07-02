@@ -304,8 +304,8 @@ __global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
     int ai = 0;         // Index iterating over rows in A
     int bj = 0;         // Index iterating over columns in B
     float sum = 0;
-    // printf("%i %i : [%i %i] %i %i\n", startIdx, stride, threadIdx.x, blockIdx.x,
-    //        blockDim.x, gridDim.x);
+    printf("%i %i : [%i %i] %i %i\n", startIdx, stride, threadIdx.x, blockIdx.x,
+            blockDim.x, gridDim.x);
     if(blockIdx.x == 0 && threadIdx.x ==0){
         printf("****************************\n\tblockDim.x = %i\n\tgridDim.x = %i\n",
                blockDim.x, gridDim.x);
@@ -413,14 +413,18 @@ int main(int argc, char *argv[])
 
 
     // Read in data to host
-    sprintf(path, "data/small/A_small.txt");
+    //sprintf(path, "data/very_small/A.txt");
+    sprintf(path, "data/small/A.txt");
     h_A = read_numpy_matrix(path, h_dimA);
-    sprintf(path, "data/small/B_small.txt");
+    //sprintf(path, "data/very_small/B.txt");
+    sprintf(path, "data/small/B.txt");
     h_B = read_numpy_matrix(path, h_dimB);
-    sprintf(path, "data/small/AB_small.txt");
+    //sprintf(path, "data/very_small/AB.txt");
+    sprintf(path, "data/small/AB.txt");
     answer = read_numpy_matrix(path, h_dimAB);
     h_dimAB[0] = h_dimA[0];
     h_dimAB[1] = h_dimB[1];
+    h_AB = (float *)malloc(h_dimAB[0] * h_dimAB[1] * sizeof(float));
 
     // Allocate device objects
     // Transfer data from host to device
@@ -439,8 +443,9 @@ int main(int argc, char *argv[])
                          cudaMemcpyHostToDevice));
 
     time_t start = time(NULL);
-    //matrix_multiply<<<1024,32>>> (d_A, d_B, d_dimA, d_dimB, d_AB, d_dimAB);  
-    matrix_multiply<<<1,1>>> (d_A, d_B, d_dimA, d_dimB, d_AB, d_dimAB);  
+    //matrix_multiply<<<1,1>>> (d_A, d_B, d_dimA, d_dimB, d_AB, d_dimAB);  
+    //matrix_multiply<<<1,32>>> (d_A, d_B, d_dimA, d_dimB, d_AB, d_dimAB);  
+    matrix_multiply<<<32,32>>> (d_A, d_B, d_dimA, d_dimB, d_AB, d_dimAB);  
     gpuErrChk(cudaPeekAtLastError());
     gpuErrChk(cudaDeviceSynchronize());
     cudaDeviceSynchronize();     // Need to block here to prevent further CPU execution
