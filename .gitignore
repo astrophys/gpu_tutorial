@@ -1,3 +1,5 @@
+*.o
+hello_gpu
 submit.sh
 AB_result.txt
 a.out
