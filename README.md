@@ -14,4 +14,3 @@ make
 
 
 ### Refs
-1. [SLURM MPI Guide](https://slurm.schedmd.com/mpi_guide.html)
