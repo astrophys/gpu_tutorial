@@ -7,9 +7,9 @@ the function of individual GPUs.
 
 Testing simple GPU functionality
 ```
-ml load cuda11.8/toolkit/11.8.0
-make
-./hello_gpu
+$ ml load cuda11.8/toolkit/11.8.0
+$ make
+$ ./hello_gpu
 ```
 
 
