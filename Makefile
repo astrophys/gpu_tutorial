@@ -15,16 +15,24 @@ OBJ_DIR = $(PREFIX)
 
 ###### hello world ######
 OBJ_HELLO=$(OBJ_DIR)/hello.o
+OBJ_MM=$(OBJ_DIR)/matrix_multiply.o
 
-all: hello_gpu
+all: hello_gpu matrix_multiply
 
 # Compile straight CUDA files
 # -dc avoids error : ptxas fatal   : Unresolved extern function '_Z9d_map_idxiii'
 $(OBJ_HELLO) : $(PREFIX)/hello_gpu.cu
 	$(NVCC) $(NVCCFLAGS) -dc $< -o $@
 
+$(OBJ_MM) : $(PREFIX)/matrix_multiply.cu
+	$(NVCC) $(NVCCFLAGS) -dc $< -o $@
+
 hello_gpu : $(OBJ_HELLO)
 	$(NVCC) -o hello_gpu $(OBJ_HELLO)
 
+matrix_multiply : $(OBJ_MM)
+	$(NVCC) -o matrix_multiply $(OBJ_MM)
+
+
 clean :
-	rm $(OBJ_MPI) hello_gpu
+	rm $(OBJ_MPI) hello_gpu matrix_multiply 

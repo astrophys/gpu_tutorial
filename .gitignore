@@ -11,3 +11,5 @@ output
 nvidia_code
 core.*
 simpleTensorCoreGEMM_ali_adapted
+matrix_multiply
+slurm*.out

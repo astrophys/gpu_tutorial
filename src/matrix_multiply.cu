@@ -444,7 +444,8 @@ int main(int argc, char *argv[])
         printf("multiProcessorCount : %d\n", prop.multiProcessorCount);
         printf("maxThreadsPerMultiProcessor : %i\n", prop.maxThreadsPerMultiProcessor);
         printf("maxThreadsPerBlock : %i\n", prop.maxThreadsPerBlock);
-        printf("maxGridSize : %i\n", prop.maxGridSize);
+        printf("maxGridSize : %i\n", prop.maxGridSize[0]);
+        printf("sizeof(maxGridSize) : %lu\n", sizeof(prop.maxGridSize));
         printf("Running matrix_multiply.cu...\n");
     }
 
