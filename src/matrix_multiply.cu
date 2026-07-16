@@ -414,7 +414,7 @@ __global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
     DESCRIPTION:
         Can run as 
             ./a.out 
-            ./a.out ouputfile
+            ./a.out path/to/A.txt path/to/B.txt path/to/AB_result.txt
     RETURN:
     DEBUG:
     NOTES: 
@@ -498,16 +498,16 @@ int main(int argc, char *argv[])
     free(AB); 
     //sprintf(path, "data/A_small.txt");
     //sprintf(path, "data/large/A.txt");
-    sprintf(path, "data/very_large/A.txt");
-    A = read_numpy_matrix(path, dimA);
+    //sprintf(path, "data/very_large/A.txt");
+    A = read_numpy_matrix(argv[1], dimA);
     //sprintf(path, "data/B_small.txt");
     //sprintf(path, "data/large/B.txt");
     sprintf(path, "data/very_large/B.txt");
-    B = read_numpy_matrix(path, dimB);
+    B = read_numpy_matrix(argv[2], dimB);
     //sprintf(path, "data/AB_small.txt");
     //sprintf(path, "data/large/AB.txt");
     sprintf(path, "data/very_large/AB.txt");
-    answer = read_numpy_matrix(path, dimAB);
+    answer = read_numpy_matrix(path, dimAB);        //Unused...
     //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
     //print_1D_array(AB, dimAB[0], dimAB[1]);
 
@@ -524,9 +524,11 @@ int main(int argc, char *argv[])
 
     printf("Run time : %.3f s\n", difftime(time(NULL), start));
     if(argc == 1){
-        fout = fopen("output/AB_result.txt", "w+");
-    }else if(argc == 2){
-        fout = fopen(argv[1], "w+");
+        //fout = fopen("output/AB_result.txt", "w+");
+        sprintf(errStr, "ERROR!!! Incorrect number of arguments");
+        exit_with_error(errStr);
+    }else if(argc == 4){
+        fout = fopen(argv[3], "w+");
     }else{
         sprintf(errStr, "ERROR!!! Incorrect number of arguments");
         exit_with_error(errStr);
