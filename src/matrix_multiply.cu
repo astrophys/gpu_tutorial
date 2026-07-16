@@ -423,7 +423,7 @@ __global__ void matrix_multiply(float * A, float * B, int * dimA, int * dimB,
 int main(int argc, char *argv[])
 {
     // Declare variables
-    char path[100];
+    //char path[100];
     char errStr[200];
     int nDev = 0;      //Number of devices
     int * dimA = NULL; //{2,3};
@@ -432,7 +432,7 @@ int main(int argc, char *argv[])
     float *A = NULL;
     float *B = NULL;
     float *AB = NULL;
-    float *answer = NULL;
+    //float *answer = NULL;
     FILE * fout = NULL;
     // Print device statistics.
     cudaGetDeviceCount(&nDev);
@@ -502,12 +502,12 @@ int main(int argc, char *argv[])
     A = read_numpy_matrix(argv[1], dimA);
     //sprintf(path, "data/B_small.txt");
     //sprintf(path, "data/large/B.txt");
-    sprintf(path, "data/very_large/B.txt");
+    //sprintf(path, "data/very_large/B.txt");
     B = read_numpy_matrix(argv[2], dimB);
     //sprintf(path, "data/AB_small.txt");
     //sprintf(path, "data/large/AB.txt");
-    sprintf(path, "data/very_large/AB.txt");
-    answer = read_numpy_matrix(path, dimAB);        //Unused...
+    //sprintf(path, "data/very_large/AB.txt");
+    //answer = read_numpy_matrix(path, dimAB);        //Unused...
     //AB = cpu_matrix_multiply(A, B, dimA, dimB, dimAB);
     //print_1D_array(AB, dimAB[0], dimAB[1]);
 
